@@ -4,9 +4,12 @@ osint_reseacher.py
 
 import dash
 from dash import dcc, html
+import plotly.graph_objs as go
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
+from dash.long_callback import DiskcacheLongCallbackManager
+import diskcache
 import plotly.express as px
 import plotly.graph_objs as go
 from researcher import OSINTResearcher
@@ -28,11 +31,15 @@ logger = logging.getLogger(__name__)
 os.environ['GOOGLE_API_KEY'] = ''
 os.environ['GOOGLE_CSE_ID'] = ''
 
+# Initialize the long callback manager
+cache = diskcache.Cache("./cache")
+long_callback_manager = DiskcacheLongCallbackManager(cache)
+
 # Initialize the Dash app
 if not USE_CYBERPUNK_THEME:
-    app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+    app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], long_callback_manager=long_callback_manager)
 elif USE_CYBERPUNK_THEME:
-    app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, '/osint_assets/custom.css'])
+    app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, '/osint_assets/custom.css'], long_callback_manager=long_callback_manager)
 
 # Define the layout
 app.layout = dbc.Container([
@@ -57,57 +64,79 @@ app.layout = dbc.Container([
             dbc.Button("Close", id="close-rss-modal", className="ml-auto")
         ),
     ], id="rss-modal", size="lg"),
-    dbc.Accordion([
-        dbc.AccordionItem([
-            html.Div(id="analysis-placeholder", children="Perform a search to generate an analysis of the data, if any."),
-            html.Div(id="analysis-content", style={'display': 'none'}, children=[
-                dbc.Row([
-                    dbc.Col([
-                        html.H3("Keyword Frequency"),
-                        dcc.Graph(id="keyword-frequency-graph"),
-                    ], width=6),
-                    dbc.Col([
-                        html.H3("Source Distribution"),
-                        dcc.Graph(id="source-distribution-graph"),
-                    ], width=6),
-                ]),
-                dbc.Row([
-                    dbc.Col([
-                        html.H3("Entity Network"),
-                        dcc.Graph(id="entity-network-graph"),
-                    ], width=6),
-                    dbc.Col([
-                        html.H3("Sentiment Analysis"),
-                        dcc.Graph(id="sentiment-gauge"),
-                    ], width=6),
-                ]),
-                dbc.Row([
-                    dbc.Col([
-                        html.H3("Topic Modeling"),
-                        html.Div(id="topic-modeling"),
-                    ], width=12),
-                ]),
-            ]),
-        ], title="Analysis", item_id="analysis"),
-        dbc.AccordionItem([
-            dbc.Row([
-                dbc.Col([
-                    html.H3("Search Results"),
-                    html.Div(id="search-results"),
-                ], width=6),
-                dbc.Col([
-                    html.H3("RSS Feed Results"),
-                    html.Div(id="rss-results"),
-                ], width=6),
-            ]),
-        ], title="Search Results", item_id="search_results"),
-    ], start_collapsed=False, always_open=True, active_item="search_results"),
+    dcc.Loading(
+        id="loading",
+        type="circle",
+        children=[
+            dbc.Accordion([
+                dbc.AccordionItem([
+                    html.Div(id="analysis-placeholder", children="Perform a search to generate an analysis of the data, if any."),
+                    html.Div(id="analysis-content", style={'display': 'none'}, children=[
+                        dbc.Row([
+                            dbc.Col([
+                                html.H3("Keyword Frequency"),
+                                dcc.Graph(id="keyword-frequency-graph"),
+                            ], width=6),
+                            dbc.Col([
+                                html.H3("Source Distribution"),
+                                dcc.Graph(id="source-distribution-graph"),
+                            ], width=6),
+                        ]),
+                        dbc.Row([
+                            dbc.Col([
+                                html.H3("Entity Network"),
+                                dcc.Graph(id="entity-network-graph"),
+                            ], width=6),
+                            dbc.Col([
+                                html.H3("Sentiment Analysis"),
+                                dcc.Graph(id="sentiment-gauge"),
+                            ], width=6),
+                        ]),
+                        dbc.Row([
+                            dbc.Col([
+                                html.H3("Word Cloud"),
+                                html.Img(id="wordcloud-image", style={"width": "100%"}),
+                            ], width=6),
+                            # dbc.Col([
+                            #     html.H3("Named Entities"),
+                            #     html.Div(id="named-entities"),
+                            # ], width=6),
+                        ]),
+                        dbc.Row([
+                            dbc.Col([
+                                html.H3("Topic Modeling"),
+                                html.Div(id="topic-modeling"),
+                            ], width=12),
+                        ]),
+                        # dbc.Row([
+                        #     dbc.Col([
+                        #         html.H3("Sentiment by Source"),
+                        #         dcc.Graph(id="sentiment-by-source"),
+                        #     ], width=12),
+                        # ]),
+                    ]),
+                ], title="Analysis", item_id="analysis"),
+                dbc.AccordionItem([
+                    dbc.Row([
+                        dbc.Col([
+                            html.H3("Search Results"),
+                            html.Div(id="search-results"),
+                        ], width=6),
+                        dbc.Col([
+                            html.H3("RSS Feed Results"),
+                            html.Div(id="rss-results"),
+                        ], width=6),
+                    ]),
+                ], title="Search Results", item_id="search_results"),
+            ], start_collapsed=False, always_open=True, active_item="search_results"),
+        ]
+    ),
 ], fluid=True)
 
 researcher = OSINTResearcher()
 
 @app.callback(
-    [Output("search-results", "children"),
+    output=[Output("search-results", "children"),
      Output("rss-results", "children"),
      Output("keyword-frequency-graph", "figure"),
      Output("source-distribution-graph", "figure"),
@@ -116,9 +145,19 @@ researcher = OSINTResearcher()
      Output("topic-modeling", "children"),
      Output("analysis-placeholder", "children"),
      Output("analysis-placeholder", "style"),
-     Output("analysis-content", "style")],
-    [Input("search-button", "n_clicks")],
-    [State("search-input", "value")]
+     Output("analysis-content", "style"),
+     Output("wordcloud-image", "src"),
+    #  Output("named-entities", "children"),
+    #  Output("sentiment-by-source", "figure")
+    ],
+    inputs=[Input("search-button", "n_clicks")],
+    state=[State("search-input", "value")],
+    running=[
+        (Output("search-button", "disabled"), True, False),
+        (Output("search-input", "disabled"), True, False),
+    ],
+    prevent_initial_call=True,
+    background=True,
 )
 def update_results(n_clicks, search_term):
     if n_clicks is None:
@@ -155,10 +194,10 @@ def update_results(n_clicks, search_term):
         )
         return (error_message, error_message, empty_figure, empty_figure, empty_figure, 
                 empty_figure, "No data available", "No data was found for that search query", 
-                {'display': 'block'}, {'display': 'none'})
+                {'display': 'block'}, {'display': 'none'}, "", "", empty_figure)
 
     try:
-        keyword_freq, source_dist, entities, sentiment, lda_model, corpus, dictionary, entity_network = researcher.analyze_results(all_results)
+        keyword_freq, source_dist, entities, sentiment, lda_model, corpus, dictionary, entity_network, wordcloud_img, sentiment_by_source = researcher.analyze_results(all_results)
     except Exception as e:
         logger.error(f"Error in analyzing results: {e}")
         logger.exception("Exception details:")
@@ -173,7 +212,7 @@ def update_results(n_clicks, search_term):
         )
         return (error_message, error_message, empty_figure, empty_figure, empty_figure, 
                 empty_figure, "Analysis error", "An error occurred during analysis", 
-                {'display': 'block'}, {'display': 'none'})
+                {'display': 'block'}, {'display': 'none'}, "", "", empty_figure)
 
     search_results_html = [html.Div([
         html.H4(html.A(result['title'], href=result['link'], target="_blank")),
@@ -297,6 +336,23 @@ def update_results(n_clicks, search_term):
     print("Building topic model...")
     topic_model_html = pyLDAvis.gensim_models.prepare(lda_model, corpus, dictionary)
     topic_model_html = pyLDAvis.prepared_data_to_html(topic_model_html)
+
+    # Create sentiment by source bar chart
+    # sentiment_by_source_fig = go.Figure(data=[
+    #     go.Bar(x=sentiment_by_source.index, y=sentiment_by_source.values)
+    # ])
+    # sentiment_by_source_fig.update_layout(
+    #     title="Average Sentiment by Source",
+    #     xaxis_title="Source",
+    #     yaxis_title="Average Sentiment",
+    #     yaxis=dict(range=[-1, 1])
+    # )
+
+    # Create named entities display
+    # named_entities_html = html.Div([
+    #     html.H4(entity_type),
+    #     html.Ul([html.Li(entity) for entity in sorted(entities_list)])
+    # ] for entity_type, entities_list in entities.items() if entities_list)
     
     print("Search done.")
 
@@ -310,7 +366,8 @@ def update_results(n_clicks, search_term):
         html.Iframe(srcDoc=topic_model_html, style={"height": "800px", "width": "100%"}),
         "",  # Empty string for analysis placeholder
         {'display': 'none'},  # Hide the placeholder when results are shown
-        {'display': 'block'}  # Show the analysis content when results are available
+        {'display': 'block'},  # Show the analysis content when results are available
+        f"data:image/png;base64,{wordcloud_img}"
     )
 
 @app.callback(

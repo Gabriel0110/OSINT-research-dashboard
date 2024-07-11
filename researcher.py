@@ -31,6 +31,12 @@ import itertools
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from threading import Thread
+from wordcloud import WordCloud
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import io
+import base64
 
 # Download necessary NLTK data
 nltk.download('punkt', quiet=True)
@@ -192,19 +198,34 @@ class OSINTResearcher:
         return keywords
 
     def extract_entities(self, text):
-        print("\nExtracting entities...\n")
-        
         doc = self.nlp(text)
         entities = {
             'PERSON': set(),
             'ORG': set(),
-            'GPE': set(),  # Countries, cities, states
-            'LOC': set(),  # Non-GPE locations
+            'GPE': set(),
+            'LOC': set(),
+            'DATE': set(),
+            'TIME': set(),
+            'MONEY': set(),
+            'PERCENT': set(),
         }
         for ent in doc.ents:
             if ent.label_ in entities:
                 entities[ent.label_].add(ent.text)
         return entities
+
+    def generate_wordcloud(self, text):
+        wordcloud = WordCloud(width=800, height=400, background_color='white')
+        wordcloud.generate(text)
+        img = io.BytesIO()
+        plt.figure(figsize=(10, 5))
+        plt.imshow(wordcloud, interpolation='bilinear')
+        plt.axis('off')
+        plt.tight_layout(pad=0)
+        plt.savefig(img, format='png')
+        plt.close()  # Close the figure to free up memory
+        img.seek(0)
+        return base64.b64encode(img.getvalue()).decode()
 
     def analyze_sentiment(self, text):
         print("\nAnalyzing sentiment...\n")
@@ -248,6 +269,16 @@ class OSINTResearcher:
                 if entity1 in G.nodes() and entity2 in G.nodes():
                     G.add_edge(entity1, entity2, type=entity_type)
                     edge_count += 1
+
+        # Calculate centrality measures
+        degree_centrality = nx.degree_centrality(G)
+        betweenness_centrality = nx.betweenness_centrality(G)
+        eigenvector_centrality = nx.eigenvector_centrality(G)
+
+        # Add centrality measures to node attributes
+        nx.set_node_attributes(G, degree_centrality, 'degree_centrality')
+        nx.set_node_attributes(G, betweenness_centrality, 'betweenness_centrality')
+        nx.set_node_attributes(G, eigenvector_centrality, 'eigenvector_centrality')
         
         self.logger.info(f"Entity network created with {node_count} nodes and {edge_count} edges")
         return G
@@ -276,7 +307,20 @@ class OSINTResearcher:
         source_dist = pd.Series(sources).value_counts()
 
         entities = self.extract_entities(all_text)
-        sentiment = self.analyze_sentiment(all_text)
+        wordcloud_img = self.generate_wordcloud(all_text)
+
+        sentiments = []
+        for result in results:
+            clean_text = self.clean_html_and_limit_text(result['title'] + ' ' + result['snippet'])
+            sentiment = self.analyze_sentiment(clean_text)
+            sentiments.append({
+                'source': result.get('source', 'Unknown'),
+                'published': result.get('published', 'N/A'),
+                'sentiment': sentiment
+            })
+        
+        sentiment_df = pd.DataFrame(sentiments)
+        sentiment_by_source = sentiment_df.groupby('source')['sentiment'].mean().sort_values(ascending=False)
         
         texts = [result['title'] + ' ' + result['snippet'] for result in results]
         lda_model, corpus, dictionary = self.topic_modeling(texts)
@@ -288,4 +332,4 @@ class OSINTResearcher:
             self.logger.exception("Exception details:")
             entity_network = nx.Graph()  # Return an empty graph in case of error
 
-        return keyword_freq, source_dist, entities, sentiment, lda_model, corpus, dictionary, entity_network
+        return keyword_freq, source_dist, entities, sentiment, lda_model, corpus, dictionary, entity_network, wordcloud_img, sentiment_by_source
