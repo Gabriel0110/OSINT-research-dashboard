@@ -57,6 +57,16 @@ app.layout = dbc.Container([
             html.Div(id="rss-feedback", style={'color': 'black'}),
         ], width=6),
     ], className="mb-4"),
+    dbc.Row([
+        dbc.Col([
+            dbc.Checkbox(id="search-emails", label="Search Outlook Emails"),
+            dbc.Checkbox(id="use-embeddings", label="Use Embeddings for Email Search"),
+        ], width=6),
+        dbc.Col([
+            dcc.Dropdown(id="mailbox-select", multi=True, placeholder="Select mailboxes to search"),
+            dbc.Input(id="email-folders", placeholder="Enter folder names (comma-separated)", type="text"),
+        ], width=6),
+    ], className="mb-4"),
     dbc.Modal([
         dbc.ModalHeader("RSS Feeds"),
         dbc.ModalBody(id="rss-feed-list"),
@@ -81,7 +91,7 @@ app.layout = dbc.Container([
                                 html.H3("Source Distribution"),
                                 dcc.Graph(id="source-distribution-graph"),
                             ], width=6),
-                        ]),
+                        ], className="mb-4"),
                         dbc.Row([
                             dbc.Col([
                                 html.H3("Entity Network"),
@@ -91,29 +101,19 @@ app.layout = dbc.Container([
                                 html.H3("Sentiment Analysis"),
                                 dcc.Graph(id="sentiment-gauge"),
                             ], width=6),
-                        ]),
+                        ], className="mb-4"),
                         dbc.Row([
                             dbc.Col([
                                 html.H3("Word Cloud"),
-                                html.Img(id="wordcloud-image", style={"width": "100%"}),
-                            ], width=6),
-                            # dbc.Col([
-                            #     html.H3("Named Entities"),
-                            #     html.Div(id="named-entities"),
-                            # ], width=6),
-                        ]),
+                                html.Img(id="wordcloud-image", style={"width": "80%"}),
+                            ], width=10),
+                        ], className="mb-4"),
                         dbc.Row([
                             dbc.Col([
                                 html.H3("Topic Modeling"),
                                 html.Div(id="topic-modeling"),
-                            ], width=12),
-                        ]),
-                        # dbc.Row([
-                        #     dbc.Col([
-                        #         html.H3("Sentiment by Source"),
-                        #         dcc.Graph(id="sentiment-by-source"),
-                        #     ], width=12),
-                        # ]),
+                            ], width=10),
+                        ], className="mb-4")
                     ]),
                 ], title="Analysis", item_id="analysis"),
                 dbc.AccordionItem([
@@ -121,11 +121,7 @@ app.layout = dbc.Container([
                         dbc.Col([
                             html.H3("Search Results"),
                             html.Div(id="search-results"),
-                        ], width=6),
-                        dbc.Col([
-                            html.H3("RSS Feed Results"),
-                            html.Div(id="rss-results"),
-                        ], width=6),
+                        ], width=10),
                     ]),
                 ], title="Search Results", item_id="search_results"),
             ], start_collapsed=False, always_open=True, active_item="search_results"),
@@ -136,8 +132,30 @@ app.layout = dbc.Container([
 researcher = OSINTResearcher()
 
 @app.callback(
+    [Output("search-emails", "disabled"),
+     Output("use-embeddings", "disabled"),
+     Output("mailbox-select", "disabled"),
+     Output("email-folders", "disabled"),
+     Output("search-emails", "label")],
+    [Input("search-emails", "id")]  # This input is just to trigger the callback on page load
+)
+def update_email_search_availability(_):
+    is_available = researcher.is_email_search_available()
+    label = "Search Outlook Emails" if is_available else "Email search not available"
+    return not is_available, not is_available, not is_available, not is_available, label
+
+@app.callback(
+    Output("mailbox-select", "options"),
+    Input("search-emails", "checked")
+)
+def update_mailbox_options(search_emails):
+    if search_emails and researcher.is_email_search_available():
+        mailboxes = researcher.get_available_mailboxes()
+        return [{"label": mailbox, "value": mailbox} for mailbox in mailboxes]
+    return []
+
+@app.callback(
     output=[Output("search-results", "children"),
-     Output("rss-results", "children"),
      Output("keyword-frequency-graph", "figure"),
      Output("source-distribution-graph", "figure"),
      Output("entity-network-graph", "figure"),
@@ -146,12 +164,13 @@ researcher = OSINTResearcher()
      Output("analysis-placeholder", "children"),
      Output("analysis-placeholder", "style"),
      Output("analysis-content", "style"),
-     Output("wordcloud-image", "src"),
-    #  Output("named-entities", "children"),
-    #  Output("sentiment-by-source", "figure")
-    ],
+     Output("wordcloud-image", "src")],
     inputs=[Input("search-button", "n_clicks")],
-    state=[State("search-input", "value")],
+    state=[State("search-input", "value"),
+           State("search-emails", "checked"),
+           State("use-embeddings", "checked"),
+           State("mailbox-select", "value"),
+           State("email-folders", "value")],
     running=[
         (Output("search-button", "disabled"), True, False),
         (Output("search-input", "disabled"), True, False),
@@ -159,7 +178,7 @@ researcher = OSINTResearcher()
     prevent_initial_call=True,
     background=True,
 )
-def update_results(n_clicks, search_term):
+def update_results(n_clicks, search_term, search_emails, use_embeddings, mailboxes, email_folders):
     if n_clicks is None:
         raise PreventUpdate
 
@@ -168,38 +187,19 @@ def update_results(n_clicks, search_term):
 
     try:
         web_results = researcher.web_search(search_term)
-    except Exception as e:
-        logger.error(f"Error in web search: {e}")
-        logger.exception("Exception details:")
-        web_results = []
-
-    try:
         rss_results = researcher.search_rss_feeds(search_term)
-    except Exception as e:
-        logger.error(f"Error in RSS feed search: {e}")
-        logger.exception("Exception details:")
-        rss_results = []
-
-    all_results = web_results + rss_results
-
-    if not all_results:
-        error_message = html.Div([
-            html.H4("No results found", className="text-danger"),
-            html.P("Please try a different search term or check your internet connection.")
-        ])
-        empty_figure = px.scatter(x=[0], y=[0]).update_layout(
-            title="No data available",
-            xaxis_title="",
-            yaxis_title=""
-        )
-        return (error_message, error_message, empty_figure, empty_figure, empty_figure, 
-                empty_figure, "No data available", "No data was found for that search query", 
-                {'display': 'block'}, {'display': 'none'}, "", "", empty_figure)
-
-    try:
+        
+        email_results = []
+        if search_emails and researcher.is_email_search_available():
+            folder_names = [name.strip() for name in email_folders.split(',')] if email_folders else None
+            email_results = researcher.search_outlook(search_term, mailboxes, folder_names, use_embeddings)
+        
+        all_results = web_results + rss_results + email_results
+        
         keyword_freq, source_dist, entities, sentiment, lda_model, corpus, dictionary, entity_network, wordcloud_img, sentiment_by_source = researcher.analyze_results(all_results)
+
     except Exception as e:
-        logger.error(f"Error in analyzing results: {e}")
+        logger.error(f"Error in search and analysis: {e}")
         logger.exception("Exception details:")
         error_message = html.Div([
             html.H4("Error in analysis", className="text-danger"),
@@ -210,42 +210,28 @@ def update_results(n_clicks, search_term):
             xaxis_title="",
             yaxis_title=""
         )
-        return (error_message, error_message, empty_figure, empty_figure, empty_figure, 
+        return (error_message, empty_figure, empty_figure, empty_figure, 
                 empty_figure, "Analysis error", "An error occurred during analysis", 
-                {'display': 'block'}, {'display': 'none'}, "", "", empty_figure)
+                {'display': 'block'}, {'display': 'none'}, "")
 
     search_results_html = [html.Div([
-        html.H4(html.A(result['title'], href=result['link'], target="_blank")),
-        html.P(result['snippet']),
-        html.Small(f"Source: {result['source']}"),
-    ]) for result in web_results]
-
-    rss_results_html = [html.Div([
-        html.H4(html.A(result['title'], href=result['link'], target="_blank")),
+        html.H4(html.A(result['title'], href=result.get('link', '#'), target="_blank")),
         html.P(result['snippet']),
         html.Small(f"Source: {result['source']} | Published: {result.get('published', 'N/A')}"),
-    ], style={'margin-bottom': '20px', 'word-wrap': 'break-word'}) for result in rss_results]
+    ], style={'margin-bottom': '20px', 'word-wrap': 'break-word'}) for result in all_results]
 
-    if not USE_CYBERPUNK_THEME:
-        keyword_freq_fig = px.bar(keyword_freq, x=keyword_freq.index, y=keyword_freq.values,
-                                  labels={'x': 'Keyword', 'y': 'Frequency'})
+    keyword_freq_fig = create_figure_with_cyberpunk_theme(px.bar(keyword_freq, x=keyword_freq.index, y=keyword_freq.values,
+                            labels={'x': 'Keyword', 'y': 'Frequency'}))
 
-        source_dist_fig = px.pie(names=source_dist.index, values=source_dist.values)
-    elif USE_CYBERPUNK_THEME:
-        keyword_freq_fig = create_figure_with_cyberpunk_theme(px.bar(keyword_freq, x=keyword_freq.index, y=keyword_freq.values,
-                                labels={'x': 'Keyword', 'y': 'Frequency'}))
-
-        source_dist_fig = create_figure_with_cyberpunk_theme(px.pie(names=source_dist.index, values=source_dist.values))
+    source_dist_fig = create_figure_with_cyberpunk_theme(px.pie(names=source_dist.index, values=source_dist.values))
 
     # Entity Network Graph
-    print(f"Buidling entity network with {len(entity_network.nodes())} nodes and {len(entity_network.edges())} edges.")
     pos = nx.spring_layout(entity_network)
     edge_trace = go.Scatter(
-        x=[],
-        y=[],
-        line=dict(width=0.5, color='#888'),
-        hoverinfo='none',
-        mode='lines')
+        x=[], y=[], line=dict(width=0.5, color='#888'), hoverinfo='none', mode='lines')
+    node_trace = go.Scatter(
+        x=[], y=[], text=[], mode='markers', hoverinfo='text',
+        marker=dict(showscale=True, colorscale='YlGnBu', size=10, colorbar=dict(thickness=15, title='Centrality', xanchor='left', titleside='right')))
 
     for edge in entity_network.edges():
         x0, y0 = pos[edge[0]]
@@ -253,112 +239,45 @@ def update_results(n_clicks, search_term):
         edge_trace['x'] += tuple([x0, x1, None])
         edge_trace['y'] += tuple([y0, y1, None])
 
-    node_trace = go.Scatter(
-        x=[],
-        y=[],
-        text=[],
-        mode='markers',
-        hoverinfo='text',
-        marker=dict(
-            showscale=True,
-            colorscale='YlGnBu',
-            size=10,
-            colorbar=dict(
-                thickness=15,
-                title='Node Connections',
-                xanchor='left',
-                titleside='right'
-            )
-        )
-    )
-
     for node in entity_network.nodes():
         x, y = pos[node]
         node_trace['x'] += tuple([x])
         node_trace['y'] += tuple([y])
-        node_trace['text'] += tuple([node])
+        node_trace['text'] += tuple([f"{node}<br>Degree Centrality: {entity_network.nodes[node]['degree_centrality']:.2f}<br>Betweenness Centrality: {entity_network.nodes[node]['betweenness_centrality']:.2f}<br>Eigenvector Centrality: {entity_network.nodes[node]['eigenvector_centrality']:.2f}"])
 
-    if not USE_CYBERPUNK_THEME:
-        entity_network_fig = go.Figure(data=[edge_trace, node_trace],
-                                    layout=go.Layout(
-                                        title='Entity Network',
-                                        showlegend=False,
-                                        hovermode='closest',
-                                        margin=dict(b=20,l=5,r=5,t=40),
-                                        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                                        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
-                                    )
-    elif USE_CYBERPUNK_THEME:
-        entity_network_fig = create_figure_with_cyberpunk_theme(go.Figure(data=[edge_trace, node_trace],
-                                    layout=go.Layout(
-                                        title='Entity Network',
-                                        showlegend=False,
-                                        hovermode='closest',
-                                        margin=dict(b=20,l=5,r=5,t=40),
-                                        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                                        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))
-                                    ))
+    node_trace.marker.color = [entity_network.nodes[node]['degree_centrality'] for node in entity_network.nodes()]
+
+    entity_network_fig = create_figure_with_cyberpunk_theme(go.Figure(data=[edge_trace, node_trace],
+                                layout=go.Layout(
+                                    title='Entity Network',
+                                    showlegend=False,
+                                    hovermode='closest',
+                                    margin=dict(b=20,l=5,r=5,t=40),
+                                    xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+                                    yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))))
 
     # Sentiment Gauge
-    print("Building sentiment gauge...")
-    if not USE_CYBERPUNK_THEME:
-        sentiment_fig = go.Figure(go.Indicator(
-            mode = "gauge+number",
-            value = sentiment,
-            title = {'text': "Sentiment"},
-            gauge = {'axis': {'range': [-1, 1]},
-                    'bar': {'color': "darkblue"},
-                    'steps' : [
-                        {'range': [-1, -0.5], 'color': "red"},
-                        {'range': [-0.5, 0.5], 'color': "gray"},
-                        {'range': [0.5, 1], 'color': "green"}],
-                    'threshold': {
-                        'line': {'color': "red", 'width': 4},
-                        'thickness': 0.75,
-                        'value': sentiment}}))
-    elif USE_CYBERPUNK_THEME:
-        sentiment_fig = create_figure_with_cyberpunk_theme(go.Figure(go.Indicator(
-            mode = "gauge+number",
-            value = sentiment,
-            title = {'text': "Sentiment"},
-            gauge = {'axis': {'range': [-1, 1]},
-                    'bar': {'color': "#00ff00"},
-                    'steps' : [
-                        {'range': [-1, -0.5], 'color': "#ff0000"},
-                        {'range': [-0.5, 0.5], 'color': "#ffff00"},
-                        {'range': [0.5, 1], 'color': "#00ff00"}],
-                    'threshold': {
-                        'line': {'color': "#00ffff", 'width': 4},
-                        'thickness': 0.75,
-                        'value': sentiment}})))
+    sentiment_fig = create_figure_with_cyberpunk_theme(go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = sentiment,
+        title = {'text': "Sentiment"},
+        gauge = {'axis': {'range': [-1, 1]},
+                'bar': {'color': "#00ff00"},
+                'steps' : [
+                    {'range': [-1, -0.5], 'color': "#ff0000"},
+                    {'range': [-0.5, 0.5], 'color': "#ffff00"},
+                    {'range': [0.5, 1], 'color': "#00ff00"}],
+                'threshold': {
+                    'line': {'color': "#00ffff", 'width': 4},
+                    'thickness': 0.75,
+                    'value': sentiment}})))
 
     # Topic Modeling
-    print("Building topic model...")
     topic_model_html = pyLDAvis.gensim_models.prepare(lda_model, corpus, dictionary)
     topic_model_html = pyLDAvis.prepared_data_to_html(topic_model_html)
 
-    # Create sentiment by source bar chart
-    # sentiment_by_source_fig = go.Figure(data=[
-    #     go.Bar(x=sentiment_by_source.index, y=sentiment_by_source.values)
-    # ])
-    # sentiment_by_source_fig.update_layout(
-    #     title="Average Sentiment by Source",
-    #     xaxis_title="Source",
-    #     yaxis_title="Average Sentiment",
-    #     yaxis=dict(range=[-1, 1])
-    # )
-
-    # Create named entities display
-    # named_entities_html = html.Div([
-    #     html.H4(entity_type),
-    #     html.Ul([html.Li(entity) for entity in sorted(entities_list)])
-    # ] for entity_type, entities_list in entities.items() if entities_list)
-    
-    print("Search done.")
-
     return (
         search_results_html,
-        rss_results_html,
         keyword_freq_fig,
         source_dist_fig,
         entity_network_fig,

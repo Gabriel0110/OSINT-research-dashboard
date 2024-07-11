@@ -37,6 +37,11 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
 import base64
+# import win32com.client
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+from email_handler import EmailHandler
 
 # Download necessary NLTK data
 nltk.download('punkt', quiet=True)
@@ -56,9 +61,74 @@ class OSINTResearcher:
             exit(1)
             
         self.load_rss_feeds()
+        self.outlook = None
+        self.sentence_model = SentenceTransformer('distilbert-base-nli-mean-tokens')
+        self.email_handler = EmailHandler()
         
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         self.logger = logging.getLogger(__name__)
+
+    def connect_to_outlook(self):
+        if self.outlook is None:
+            try:
+                self.outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+            except Exception as e:
+                self.logger.error(f"Failed to connect to Outlook: {e}")
+                return False
+        return True
+
+    def find_folder(self, root_folder, folder_name):
+        if root_folder.Name == folder_name:
+            return root_folder
+        for folder in root_folder.Folders:
+            found_folder = self.find_folder(folder, folder_name)
+            if found_folder:
+                return found_folder
+        return None
+
+    def search_outlook_folder(self, folder, query, use_embeddings=False):
+        results = []
+        messages = folder.Items
+        messages.Sort("[ReceivedTime]", True)
+        
+        query_embedding = self.sentence_model.encode([query])[0] if use_embeddings else None
+
+        for message in messages:
+            try:
+                subject = message.Subject
+                body = message.Body
+                
+                if use_embeddings:
+                    text_embedding = self.sentence_model.encode([subject + " " + body])[0]
+                    similarity = cosine_similarity([query_embedding], [text_embedding])[0][0]
+                    if similarity > 0.5:  # Adjust this threshold as needed
+                        results.append({
+                            "title": subject,
+                            "snippet": body[:200] + "...",
+                            "source": "Outlook Email",
+                            "published": message.ReceivedTime.strftime("%a, %d %b %Y %H:%M:%S %z"),
+                        })
+                else:
+                    if query.lower() in subject.lower() or query.lower() in body.lower():
+                        results.append({
+                            "title": subject,
+                            "snippet": body[:200] + "...",
+                            "source": "Outlook Email",
+                            "published": message.ReceivedTime.strftime("%a, %d %b %Y %H:%M:%S %z"),
+                        })
+            except Exception as e:
+                self.logger.error(f"Error processing email: {e}")
+
+        return results
+
+    def search_outlook(self, query, mailboxes=None, folder_names=None, use_embeddings=False):
+        return self.email_handler.search_outlook(query, mailboxes, folder_names, use_embeddings)
+
+    def get_available_mailboxes(self):
+        return self.email_handler.get_available_mailboxes()
+
+    def is_email_search_available(self):
+        return self.email_handler.is_available()
         
     def clean_html_and_limit_text(self, html_content, max_length=200):
         # Remove HTML tags
@@ -283,13 +353,13 @@ class OSINTResearcher:
         self.logger.info(f"Entity network created with {node_count} nodes and {edge_count} edges")
         return G
 
-    def analyze_results(self, results):
+    def analyze_results(self, all_results):
         keywords = []
         sources = []
         dates = []
         all_text = ""
 
-        for result in results:
+        for result in all_results:
             clean_title = self.clean_html_and_limit_text(result['title'])
             clean_snippet = self.clean_html_and_limit_text(result['snippet'])
             
@@ -309,20 +379,9 @@ class OSINTResearcher:
         entities = self.extract_entities(all_text)
         wordcloud_img = self.generate_wordcloud(all_text)
 
-        sentiments = []
-        for result in results:
-            clean_text = self.clean_html_and_limit_text(result['title'] + ' ' + result['snippet'])
-            sentiment = self.analyze_sentiment(clean_text)
-            sentiments.append({
-                'source': result.get('source', 'Unknown'),
-                'published': result.get('published', 'N/A'),
-                'sentiment': sentiment
-            })
+        sentiment = self.analyze_sentiment(all_text)
         
-        sentiment_df = pd.DataFrame(sentiments)
-        sentiment_by_source = sentiment_df.groupby('source')['sentiment'].mean().sort_values(ascending=False)
-        
-        texts = [result['title'] + ' ' + result['snippet'] for result in results]
+        texts = [result['title'] + ' ' + result['snippet'] for result in all_results]
         lda_model, corpus, dictionary = self.topic_modeling(texts)
         
         try:
@@ -331,5 +390,10 @@ class OSINTResearcher:
             self.logger.error(f"Error creating entity network: {e}")
             self.logger.exception("Exception details:")
             entity_network = nx.Graph()  # Return an empty graph in case of error
+
+        sentiment_by_source = pd.DataFrame({
+            'source': sources,
+            'sentiment': [self.analyze_sentiment(result['title'] + ' ' + result['snippet']) for result in all_results]
+        }).groupby('source')['sentiment'].mean().sort_values(ascending=False)
 
         return keyword_freq, source_dist, entities, sentiment, lda_model, corpus, dictionary, entity_network, wordcloud_img, sentiment_by_source
