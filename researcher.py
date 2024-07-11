@@ -37,7 +37,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
 import base64
-# import win32com.client
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -61,21 +60,11 @@ class OSINTResearcher:
             exit(1)
             
         self.load_rss_feeds()
-        self.outlook = None
         self.sentence_model = SentenceTransformer('distilbert-base-nli-mean-tokens')
         self.email_handler = EmailHandler()
         
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         self.logger = logging.getLogger(__name__)
-
-    def connect_to_outlook(self):
-        if self.outlook is None:
-            try:
-                self.outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
-            except Exception as e:
-                self.logger.error(f"Failed to connect to Outlook: {e}")
-                return False
-        return True
 
     def find_folder(self, root_folder, folder_name):
         if root_folder.Name == folder_name:
