@@ -29,8 +29,8 @@ import re
 import logging
 import itertools
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError, wait, FIRST_COMPLETED
-from threading import Lock
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
+from threading import Thread
 
 # Download necessary NLTK data
 nltk.download('punkt', quiet=True)
@@ -41,7 +41,14 @@ class OSINTResearcher:
         self.rss_feeds = []
         self.api_key = os.getenv('GOOGLE_API_KEY')
         self.cse_id = os.getenv('GOOGLE_CSE_ID')
-        self.nlp = spacy.load("en_core_web_sm")
+
+        try:
+            self.nlp = spacy.load("en_core_web_sm")
+        except Exception as e:
+            print("Failed to load spaCy model. Make sure to download the model with 'python -m spacy download en_core_web_sm'")
+            print(e)
+            exit(1)
+            
         self.load_rss_feeds()
         
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -125,17 +132,14 @@ class OSINTResearcher:
     def get_rss_feeds(self):
         return self.rss_feeds
 
-    def search_rss_feeds(self, query, feed_timeout=20, total_timeout=180):
+    def search_rss_feeds(self, query):
         results = []
-        start_time = time.time()
-        total_feeds = len(self.rss_feeds)
-        completed_feeds = 0
-        completed_lock = Lock()
-        
-        def search_single_feed(feed_url):
-            nonlocal completed_feeds
+        timeout_per_feed = 30  # seconds
+        total_timeout = 180  # seconds
+
+        def search_feed(feed_url):
             try:
-                self.logger.info(f"Started searching RSS feed: {feed_url}")
+                self.logger.info(f"Searching RSS feed: {feed_url}")
                 feed = feedparser.parse(feed_url)
                 feed_results = []
                 for entry in feed.entries:
@@ -148,50 +152,35 @@ class OSINTResearcher:
                             "source": feed.feed.title,
                             "published": entry.get('published', 'N/A'),
                         })
-                with completed_lock:
-                    completed_feeds += 1
-                    self.logger.info(f"Finished searching RSS feed: {feed_url}. Found {len(feed_results)} results. Progress: {completed_feeds}/{total_feeds}")
                 return feed_results
             except Exception as e:
-                with completed_lock:
-                    completed_feeds += 1
-                    self.logger.error(f"Error parsing RSS feed {feed_url}: {e}. Progress: {completed_feeds}/{total_feeds}")
-                self.logger.exception("Exception details:")
+                self.logger.error(f"Error parsing RSS feed {feed_url}: {e}")
+                self.logger.error(f"Error details: {type(e)}, {e.args}")
                 return []
 
+        def run_with_timeout(func, args, timeout):
+            result = []
+            thread = Thread(target=lambda: result.append(func(*args)))
+            thread.start()
+            thread.join(timeout)
+            if thread.is_alive():
+                return None
+            return result[0]
+
         with ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_url = {executor.submit(search_single_feed, url): url for url in self.rss_feeds}
-            
-            while future_to_url:
-                done, _ = wait(future_to_url, timeout=min(feed_timeout, max(1, total_timeout - (time.time() - start_time))), return_when=FIRST_COMPLETED)
-                
-                for future in done:
-                    url = future_to_url[future]
-                    try:
-                        feed_results = future.result(timeout=0)  # Should be instant as it's already done
+            future_to_url = {executor.submit(run_with_timeout, search_feed, [url], timeout_per_feed): url for url in self.rss_feeds}
+            try:
+                for count, future in enumerate(as_completed(future_to_url, timeout=total_timeout), 1):
+                    feed_results = future.result()
+                    if feed_results is not None:
                         results.extend(feed_results)
-                    except TimeoutError:
-                        self.logger.error(f"Search for {url} timed out. Progress: {completed_feeds}/{total_feeds}")
-                    except Exception as exc:
-                        self.logger.error(f'{url} generated an exception: {exc}. Progress: {completed_feeds}/{total_feeds}')
-                        self.logger.exception("Exception details:")
-                    
-                    del future_to_url[future]
-                
-                if time.time() - start_time > total_timeout:
-                    self.logger.warning(f"Total RSS search time exceeded {total_timeout} seconds. Stopping search. Progress: {completed_feeds}/{total_feeds}")
-                    break
+                    else:
+                        self.logger.warning(f"Timeout or error while searching RSS feed: {future_to_url[future]}")
+                    self.logger.info(f"Finished searching feed {future_to_url[future]} ({count}/{len(self.rss_feeds)})")
+            except TimeoutError:
+                self.logger.error("Total search time exceeded the limit")
 
-            # Collect results from any remaining futures after breaking
-            for future in future_to_url:
-                try:
-                    feed_results = future.result(timeout=0)  # Should be instant as it's already done
-                    results.extend(feed_results)
-                except Exception as exc:
-                    self.logger.error(f'Final collection for {future_to_url[future]} generated an exception: {exc}')
-                    self.logger.exception("Exception details:")
-
-        self.logger.info(f"Found {len(results)} RSS feed results in {time.time() - start_time:.2f} seconds. Completed {completed_feeds}/{total_feeds} feeds.")
+        self.logger.info(f"Found {len(results)} RSS feed results\n")
         return results
 
     def extract_keywords(self, text):

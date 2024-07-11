@@ -115,6 +115,5 @@
     "https://us-cert.cisa.gov/ncas/bulletins.xml",
     "https://www.us-cert.gov/ncas/current-activity.xml",
     "https://www.ncsc.gov.uk/api/1/services/v1/report-rss-feed.xml",
-    "https://www.cyber.gov.au/rssfeed/2",
     "https://www.cisecurity.org/feed/advisories"
 ]

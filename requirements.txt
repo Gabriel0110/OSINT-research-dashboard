@@ -1,0 +1,14 @@
+beautifulsoup4==4.11.1
+dash==2.17.1
+dash_bootstrap_components==1.6.0
+feedparser==6.0.10
+gensim==4.3.2
+networkx==2.8.1
+nltk==3.8.1
+pandas==1.4.2
+plotly==5.22.0
+pyLDAvis==3.4.1
+Requests==2.32.3
+spacy==3.7.5
+textblob==0.18.0.post0
+waitress==3.0.0
