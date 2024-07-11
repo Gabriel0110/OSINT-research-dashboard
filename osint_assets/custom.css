@@ -1,0 +1,88 @@
+body {
+    background-color: #0a0a0a;
+    color: #00ff00;
+    font-family: 'Courier New', monospace;
+}
+
+.container {
+    background-color: #1a1a1a;
+    border: 1px solid #00ff00;
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 20px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: #00ffff;
+    text-shadow: 0 0 10px #00ffff;
+}
+
+.btn-primary {
+    background-color: #00ff00;
+    border-color: #00ff00;
+    color: #000000;
+}
+
+.btn-primary:hover {
+    background-color: #00ffff;
+    border-color: #00ffff;
+    color: #000000;
+}
+
+.btn-secondary {
+    background-color: #ff00ff;
+    border-color: #ff00ff;
+    color: #000000;
+}
+
+.btn-secondary:hover {
+    background-color: #ff00aa;
+    border-color: #ff00aa;
+    color: #000000;
+}
+
+.form-control {
+    background-color: #2a2a2a;
+    border-color: #00ff00;
+    color: #00ff00;
+}
+
+.form-control:focus {
+    background-color: #3a3a3a;
+    border-color: #00ffff;
+    color: #00ffff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 255, 255, 0.25);
+}
+
+.card {
+    background-color: #2a2a2a;
+    border-color: #00ff00;
+}
+
+.card-header {
+    background-color: #1a1a1a;
+    border-bottom-color: #00ff00;
+}
+
+.modal-content {
+    background-color: #1a1a1a;
+    border-color: #00ff00;
+}
+
+.modal-header {
+    border-bottom-color: #00ff00;
+}
+
+.modal-footer {
+    border-top-color: #00ff00;
+}
+
+a {
+    color: #00ffff;
+    text-decoration: none;
+}
+
+a:hover {
+    color: #ff00ff;
+    text-shadow: 0 0 5px #ff00ff;
+}
