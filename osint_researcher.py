@@ -20,6 +20,7 @@ import pyLDAvis.gensim_models
 import json
 import logging
 from waitress import serve
+from datetime import datetime, timedelta
 
 
 USE_CYBERPUNK_THEME = True
@@ -40,6 +41,11 @@ if not USE_CYBERPUNK_THEME:
     app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], long_callback_manager=long_callback_manager)
 elif USE_CYBERPUNK_THEME:
     app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, '/osint_assets/custom.css'], long_callback_manager=long_callback_manager)
+
+# Periodically check for mailboxes if enabled
+app.callback(Output("search-emails", "id"), Input("interval-component", "n_intervals"))(
+    lambda n: dash.no_update
+)
 
 # Define the layout
 app.layout = dbc.Container([
@@ -66,6 +72,18 @@ app.layout = dbc.Container([
             dcc.Dropdown(id="mailbox-select", multi=True, placeholder="Select mailboxes to search"),
             dbc.Input(id="email-folders", placeholder="Enter folder names (comma-separated)", type="text"),
         ], width=6),
+    ], className="mb-4"),
+    dbc.Row([
+        dbc.Col([
+            dbc.Label("Email Date Range:"),
+            html.Span("  "),
+            dcc.DatePickerRange(
+                id='email-date-range',
+                start_date=datetime.now() - timedelta(days=30),  # Default to last 30 days
+                end_date=datetime.now(),
+                display_format='YYYY-MM-DD'
+            ),
+        ], width=12),
     ], className="mb-4"),
     dbc.Modal([
         dbc.ModalHeader("RSS Feeds"),
@@ -127,6 +145,11 @@ app.layout = dbc.Container([
             ], start_collapsed=False, always_open=True, active_item="search_results"),
         ]
     ),
+    dcc.Interval(
+        id='interval-component',
+        interval=60*1000,  # in milliseconds, updates every 1 minute
+        n_intervals=0
+    ),
 ], fluid=True)
 
 researcher = OSINTResearcher()
@@ -136,23 +159,28 @@ researcher = OSINTResearcher()
      Output("use-embeddings", "disabled"),
      Output("mailbox-select", "disabled"),
      Output("email-folders", "disabled"),
-     Output("search-emails", "label")],
-    [Input("search-emails", "id")]  # This input is just to trigger the callback on page load
+     Output("search-emails", "label"),
+     Output("mailbox-select", "options")],
+    [Input("search-emails", "id"),
+     Input("search-emails", "checked")]
 )
-def update_email_search_availability(_):
+def update_email_search_availability(_, search_emails_checked):
     is_available = researcher.is_email_search_available()
     label = "Search Outlook Emails" if is_available else "Email search not available"
-    return not is_available, not is_available, not is_available, not is_available, label
-
-@app.callback(
-    Output("mailbox-select", "options"),
-    Input("search-emails", "checked")
-)
-def update_mailbox_options(search_emails):
-    if search_emails and researcher.is_email_search_available():
+    
+    mailbox_options = []
+    if is_available and search_emails_checked:
         mailboxes = researcher.get_available_mailboxes()
-        return [{"label": mailbox, "value": mailbox} for mailbox in mailboxes]
-    return []
+        mailbox_options = [{"label": mailbox, "value": mailbox} for mailbox in mailboxes]
+    
+    return (
+        not is_available,  # search-emails disabled
+        not is_available,  # use-embeddings disabled
+        not is_available or not search_emails_checked,  # mailbox-select disabled
+        not is_available or not search_emails_checked,  # email-folders disabled
+        label,
+        mailbox_options
+    )
 
 @app.callback(
     output=[Output("search-results", "children"),
@@ -170,7 +198,9 @@ def update_mailbox_options(search_emails):
            State("search-emails", "checked"),
            State("use-embeddings", "checked"),
            State("mailbox-select", "value"),
-           State("email-folders", "value")],
+           State("email-folders", "value"),
+           State("email-date-range", "start_date"),
+           State("email-date-range", "end_date")],
     running=[
         (Output("search-button", "disabled"), True, False),
         (Output("search-input", "disabled"), True, False),
@@ -178,7 +208,7 @@ def update_mailbox_options(search_emails):
     prevent_initial_call=True,
     background=True,
 )
-def update_results(n_clicks, search_term, search_emails, use_embeddings, mailboxes, email_folders):
+def update_results(n_clicks, search_term, search_emails, use_embeddings, mailboxes, email_folders, start_date, end_date):
     if n_clicks is None:
         raise PreventUpdate
 
@@ -192,8 +222,10 @@ def update_results(n_clicks, search_term, search_emails, use_embeddings, mailbox
         email_results = []
         if search_emails and researcher.is_email_search_available():
             folder_names = [name.strip() for name in email_folders.split(',')] if email_folders else None
-            email_results = researcher.search_outlook(search_term, mailboxes, folder_names, use_embeddings)
-        
+            start_date = datetime.strptime(start_date[:10], "%Y-%m-%d") if start_date else None
+            end_date = datetime.strptime(end_date[:10], "%Y-%m-%d") if end_date else None
+            email_results = researcher.search_outlook(search_term, mailboxes, folder_names, use_embeddings, start_date, end_date)
+
         all_results = web_results + rss_results + email_results
         
         keyword_freq, source_dist, entities, sentiment, lda_model, corpus, dictionary, entity_network, wordcloud_img, sentiment_by_source = researcher.analyze_results(all_results)
@@ -388,7 +420,7 @@ def create_figure_with_cyberpunk_theme(fig):
 
 if __name__ == '__main__':
     #app.run_server(debug=True)
-    serve(app.server, host='127.0.0.1', port=8050)
+    serve(app.server, host='127.0.0.1', port=8050, threads=6)
 
 
 
