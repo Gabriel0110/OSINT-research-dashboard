@@ -66,18 +66,18 @@ app.layout = dbc.Container([
     dbc.Row([
         dbc.Col([
             dbc.Checkbox(id="search-emails", label="Search Outlook Emails"),
-            dbc.Checkbox(id="use-embeddings", label="Use Embeddings for Email Search"),
+            dbc.Checkbox(id="use-embeddings", label="Use Embeddings for Email Search", disabled=True),
         ], width=6),
         dbc.Col([
-            dbc.Input(id="mailbox-input", placeholder="Enter mailbox name", type="text"),
-            dbc.Button("Add Mailbox", id="add-mailbox-button", color="primary", className="mt-2"),
-            dbc.Button("Check Mailboxes", id="check-mailboxes-button", color="info", className="mt-2 ml-2"),
+            dbc.Input(id="mailbox-input", placeholder="Enter mailbox name", type="text", disabled=True),
+            dbc.Button("Add Mailbox", id="add-mailbox-button", color="primary", className="mt-2", disabled=True),
+            dbc.Button("Check Mailboxes", id="check-mailboxes-button", color="info", className="mt-2 ml-2", disabled=True),
         ], width=6),
     ], className="mb-4"),
     dbc.Row([
         dbc.Col([
-            dcc.Dropdown(id="mailbox-select", multi=True, placeholder="Select mailboxes to search"),
-            dbc.Input(id="email-folders", placeholder="Enter folder names (comma-separated)", type="text"),
+            dcc.Dropdown(id="mailbox-select", multi=True, placeholder="Select mailboxes to search", disabled=True),
+            dbc.Input(id="email-folders", placeholder="Enter folder names (comma-separated)", type="text", disabled=True),
         ], width=12),
     ], className="mb-4"),
     dbc.Row([
@@ -171,24 +171,48 @@ researcher = OSINTResearcher()
     [State("mailbox-input", "value")]
 )
 def manage_mailboxes(add_clicks, check_clicks, mailbox_name):
+    logger.info("manage_mailboxes callback triggered")
     ctx = dash.callback_context
     if not ctx.triggered:
+        logger.info("No trigger for manage_mailboxes callback")
         raise PreventUpdate
 
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    logger.info(f"Button triggered: {button_id}")
 
     if button_id == "add-mailbox-button" and mailbox_name:
+        logger.info(f"Attempting to add mailbox: {mailbox_name}")
         success, message = researcher.add_mailbox(mailbox_name)
         color = "green" if success else "red"
+        logger.info(f"Add mailbox result: success={success}, message={message}")
         return get_mailbox_options(), "", message, {"color": color}
     elif button_id == "check-mailboxes-button":
-        return get_mailbox_options(), dash.no_update, "Mailboxes updated", {"color": "green"}
+        logger.info("Checking mailboxes")
+        options = get_mailbox_options()
+        logger.info(f"Available mailboxes: {options}")
+        return options, dash.no_update, "Mailboxes updated", {"color": "green"}
 
+    logger.info("No action taken in manage_mailboxes callback")
     return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
 
 def get_mailbox_options():
     mailboxes = researcher.get_available_mailboxes()
+    logger.info(f"Retrieved mailboxes: {mailboxes}")
     return [{"label": mailbox, "value": mailbox} for mailbox in mailboxes]
+
+@app.callback(
+    [Output("use-embeddings", "disabled"),
+     Output("mailbox-input", "disabled"),
+     Output("add-mailbox-button", "disabled"),
+     Output("check-mailboxes-button", "disabled"),
+     Output("mailbox-select", "disabled"),
+     Output("email-folders", "disabled")],
+    [Input("search-emails", "checked")]
+)
+def toggle_email_inputs(search_emails_checked):
+    logger.info(f"Email search checkbox state changed: {search_emails_checked}")
+    return tuple([not search_emails_checked] * 6)
 
 @app.callback(
     [Output("search-emails", "disabled"),

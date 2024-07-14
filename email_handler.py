@@ -18,6 +18,9 @@ class EmailHandler:
         self.initialize_email_client()
         self.load_mailboxes()
 
+    def is_available(self):
+        return self.email_client is not None
+
     def initialize_email_client(self):
         try:
             win32com = importlib.import_module('win32com.client')
@@ -28,31 +31,35 @@ class EmailHandler:
         except Exception as e:
             logger.error(f"Failed to initialize Outlook client: {e}")
 
-    def is_available(self):
-        return self.email_client is not None
-
     def load_mailboxes(self):
         try:
             with open('mailboxes.json', 'r') as f:
                 self.mailboxes = json.load(f)
+            logger.info(f"Loaded {len(self.mailboxes)} mailboxes from file.")
         except FileNotFoundError:
+            logger.info("No mailboxes file found. Starting with empty list.")
             self.mailboxes = []
 
     def save_mailboxes(self):
         with open('mailboxes.json', 'w') as f:
             json.dump(self.mailboxes, f)
+        logger.info(f"Saved {len(self.mailboxes)} mailboxes to file.")
 
     def add_mailbox(self, mailbox_name):
+        logger.info(f"Attempting to add mailbox: {mailbox_name}")
         if mailbox_name not in self.mailboxes:
             try:
                 # Verify if the mailbox exists
                 self.email_client.Folders[mailbox_name]
                 self.mailboxes.append(mailbox_name)
                 self.save_mailboxes()
+                logger.info(f"Mailbox '{mailbox_name}' added successfully.")
                 return True, f"Mailbox '{mailbox_name}' added successfully."
             except Exception as e:
+                logger.error(f"Failed to add mailbox '{mailbox_name}': {str(e)}")
                 return False, f"Failed to add mailbox '{mailbox_name}': {str(e)}"
         else:
+            logger.warning(f"Mailbox '{mailbox_name}' already exists.")
             return False, f"Mailbox '{mailbox_name}' already exists."
 
     def remove_mailbox(self, mailbox_name):
