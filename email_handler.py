@@ -37,7 +37,7 @@ class EmailHandler:
                 self.mailboxes = json.load(f)
             logger.info(f"Loaded {len(self.mailboxes)} mailboxes from file.")
         except FileNotFoundError:
-            logger.info("No mailboxes file found. Starting with empty list.")
+            logger.info("No saved mailboxes file found. Starting with empty list.")
             self.mailboxes = []
 
     def save_mailboxes(self):

@@ -43,9 +43,9 @@ elif USE_CYBERPUNK_THEME:
     app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY, '/osint_assets/custom.css'], long_callback_manager=long_callback_manager)
 
 # Periodically check for mailboxes if enabled
-app.callback(Output("search-emails", "id"), Input("interval-component", "n_intervals"))(
-    lambda n: dash.no_update
-)
+# app.callback(Output("search-emails", "id"), Input("interval-component", "n_intervals"))(
+#     lambda n: dash.no_update
+# )
 
 # Define the layout
 app.layout = dbc.Container([
@@ -152,11 +152,11 @@ app.layout = dbc.Container([
             ], start_collapsed=False, always_open=True, active_item="search_results"),
         ]
     ),
-    dcc.Interval(
-        id='interval-component',
-        interval=60*1000,  # in milliseconds, updates every 1 minute
-        n_intervals=0
-    ),
+    # dcc.Interval(
+    #     id='interval-component',
+    #     interval=60*1000,  # in milliseconds, updates every 1 minute
+    #     n_intervals=0
+    # ),
 ], fluid=True)
 
 researcher = OSINTResearcher()
@@ -164,13 +164,16 @@ researcher = OSINTResearcher()
 @app.callback(
     [Output("mailbox-select", "options"),
      Output("mailbox-input", "value"),
-     Output("rss-feedback", "children"),
-     Output("rss-feedback", "style")],
+     Output("mailbox-select", "value"),
+     Output("rss-feedback", "style", allow_duplicate=True),
+     Output("rss-feedback", "children", allow_duplicate=True)],
     [Input("add-mailbox-button", "n_clicks"),
      Input("check-mailboxes-button", "n_clicks")],
-    [State("mailbox-input", "value")]
+    [State("mailbox-input", "value"),
+     State("mailbox-select", "value")],
+    prevent_initial_call=True
 )
-def manage_mailboxes(add_clicks, check_clicks, mailbox_name):
+def manage_mailboxes(add_clicks, check_clicks, mailbox_name, current_selection):
     logger.info("manage_mailboxes callback triggered")
     ctx = dash.callback_context
     if not ctx.triggered:
@@ -185,15 +188,19 @@ def manage_mailboxes(add_clicks, check_clicks, mailbox_name):
         success, message = researcher.add_mailbox(mailbox_name)
         color = "green" if success else "red"
         logger.info(f"Add mailbox result: success={success}, message={message}")
-        return get_mailbox_options(), "", message, {"color": color}
+        options = get_mailbox_options()
+        new_selection = current_selection or []
+        if success:
+            new_selection.append(mailbox_name)
+        return options, "", message, {"color": color}, new_selection
     elif button_id == "check-mailboxes-button":
         logger.info("Checking mailboxes")
         options = get_mailbox_options()
         logger.info(f"Available mailboxes: {options}")
-        return options, dash.no_update, "Mailboxes updated", {"color": "green"}
+        return options, dash.no_update, "Mailboxes updated", {"color": "green"}, current_selection
 
     logger.info("No action taken in manage_mailboxes callback")
-    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 
 def get_mailbox_options():
@@ -208,39 +215,22 @@ def get_mailbox_options():
      Output("check-mailboxes-button", "disabled"),
      Output("mailbox-select", "disabled"),
      Output("email-folders", "disabled")],
-    [Input("search-emails", "checked")]
+    [Input("search-emails", "value")]
 )
 def toggle_email_inputs(search_emails_checked):
     logger.info(f"Email search checkbox state changed: {search_emails_checked}")
-    return tuple([not search_emails_checked] * 6)
+    is_disabled = not search_emails_checked
+    return is_disabled, is_disabled, is_disabled, is_disabled, is_disabled, is_disabled
 
-@app.callback(
-    [Output("search-emails", "disabled"),
-     Output("use-embeddings", "disabled"),
-     Output("mailbox-select", "disabled"),
-     Output("email-folders", "disabled"),
-     Output("search-emails", "label"),
-     Output("mailbox-select", "options")],
-    [Input("search-emails", "id"),
-     Input("search-emails", "checked")]
-)
-def update_email_search_availability(_, search_emails_checked):
-    is_available = researcher.is_email_search_available()
-    label = "Search Outlook Emails" if is_available else "Email search not available"
-    
-    mailbox_options = []
-    if is_available and search_emails_checked:
-        mailboxes = researcher.get_available_mailboxes()
-        mailbox_options = [{"label": mailbox, "value": mailbox} for mailbox in mailboxes]
-    
-    return (
-        not is_available,  # search-emails disabled
-        not is_available,  # use-embeddings disabled
-        not is_available or not search_emails_checked,  # mailbox-select disabled
-        not is_available or not search_emails_checked,  # email-folders disabled
-        label,
-        mailbox_options
-    )
+# @app.callback(
+#     [Output("search-emails", "disabled"),
+#      Output("search-emails", "checked")],
+#     [Input("search-emails", "id")]
+# )
+# def update_email_search_availability(_):
+#     is_available = researcher.is_email_search_available()
+#     logger.info(f"Email search availability: {is_available}")
+#     return not is_available, False
 
 @app.callback(
     output=[Output("search-results", "children"),
@@ -255,8 +245,8 @@ def update_email_search_availability(_, search_emails_checked):
      Output("wordcloud-image", "src")],
     inputs=[Input("search-button", "n_clicks")],
     state=[State("search-input", "value"),
-           State("search-emails", "checked"),
-           State("use-embeddings", "checked"),
+           State("search-emails", "value"),
+           State("use-embeddings", "value"),
            State("mailbox-select", "value"),
            State("email-folders", "value"),
            State("email-date-range", "start_date"),
@@ -385,8 +375,8 @@ def update_results(n_clicks, search_term, search_emails, use_embeddings, mailbox
     [Output("rss-input", "value"),
      Output("rss-feed-list", "children"),
      Output("rss-modal", "is_open"),
-     Output("rss-feedback", "children"),
-     Output("rss-feedback", "style"),
+     Output("rss-feedback", "children", allow_duplicate=True),
+     Output("rss-feedback", "style", allow_duplicate=True),
      Output("rss-feed-count", "children")],
     [Input("add-rss-button", "n_clicks"),
      Input("show-rss-button", "n_clicks"),
@@ -394,7 +384,8 @@ def update_results(n_clicks, search_term, search_emails, use_embeddings, mailbox
      Input({'type': 'delete-feed', 'index': dash.ALL}, 'n_clicks')],
     [State("rss-input", "value"),
      State("rss-modal", "is_open"),
-     State({'type': 'delete-feed', 'index': dash.ALL}, 'id')]
+     State({'type': 'delete-feed', 'index': dash.ALL}, 'id')],
+    prevent_initial_call=True
 )
 def manage_rss_feeds(add_clicks, show_clicks, close_clicks, delete_clicks, rss_url, is_open, delete_ids):
     ctx = dash.callback_context
@@ -498,8 +489,8 @@ def create_figure_with_cyberpunk_theme(fig):
     return fig
 
 if __name__ == '__main__':
-    #app.run_server(debug=True)
-    serve(app.server, host='127.0.0.1', port=8050, threads=6)
+    app.run_server(debug=True)
+    #serve(app.server, host='127.0.0.1', port=8050, threads=6)
 
 
 
