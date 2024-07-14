@@ -69,9 +69,16 @@ app.layout = dbc.Container([
             dbc.Checkbox(id="use-embeddings", label="Use Embeddings for Email Search"),
         ], width=6),
         dbc.Col([
+            dbc.Input(id="mailbox-input", placeholder="Enter mailbox name", type="text"),
+            dbc.Button("Add Mailbox", id="add-mailbox-button", color="primary", className="mt-2"),
+            dbc.Button("Check Mailboxes", id="check-mailboxes-button", color="info", className="mt-2 ml-2"),
+        ], width=6),
+    ], className="mb-4"),
+    dbc.Row([
+        dbc.Col([
             dcc.Dropdown(id="mailbox-select", multi=True, placeholder="Select mailboxes to search"),
             dbc.Input(id="email-folders", placeholder="Enter folder names (comma-separated)", type="text"),
-        ], width=6),
+        ], width=12),
     ], className="mb-4"),
     dbc.Row([
         dbc.Col([
@@ -153,6 +160,35 @@ app.layout = dbc.Container([
 ], fluid=True)
 
 researcher = OSINTResearcher()
+
+@app.callback(
+    [Output("mailbox-select", "options"),
+     Output("mailbox-input", "value"),
+     Output("rss-feedback", "children"),
+     Output("rss-feedback", "style")],
+    [Input("add-mailbox-button", "n_clicks"),
+     Input("check-mailboxes-button", "n_clicks")],
+    [State("mailbox-input", "value")]
+)
+def manage_mailboxes(add_clicks, check_clicks, mailbox_name):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if button_id == "add-mailbox-button" and mailbox_name:
+        success, message = researcher.add_mailbox(mailbox_name)
+        color = "green" if success else "red"
+        return get_mailbox_options(), "", message, {"color": color}
+    elif button_id == "check-mailboxes-button":
+        return get_mailbox_options(), dash.no_update, "Mailboxes updated", {"color": "green"}
+
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+def get_mailbox_options():
+    mailboxes = researcher.get_available_mailboxes()
+    return [{"label": mailbox, "value": mailbox} for mailbox in mailboxes]
 
 @app.callback(
     [Output("search-emails", "disabled"),
@@ -383,6 +419,28 @@ def create_rss_feed_list():
         ]) for i, feed in enumerate(feeds)
     ])
 
+# @app.callback(
+#     [Output({'type': 'delete-feed', 'index': dash.ALL}, 'disabled')],
+#     [Input({'type': 'delete-feed', 'index': dash.ALL}, 'n_clicks')],
+#     [State({'type': 'delete-feed', 'index': dash.ALL}, 'id')]
+# )
+# def delete_rss_feed(n_clicks, ids):
+#     ctx = dash.callback_context
+#     if not ctx.triggered:
+#         raise PreventUpdate
+    
+#     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+#     deleted_index = json.loads(button_id)['index']
+    
+#     feeds = researcher.get_rss_feeds()
+#     if 0 <= deleted_index < len(feeds):
+#         researcher.remove_rss_feed(feeds[deleted_index])
+    
+#     feed_count = len(researcher.get_rss_feeds())
+#     feed_count_display = f"({feed_count} feeds)"
+    
+#     return [False] * len(ids), feed_count_display
+
 @app.callback(
     [Output({'type': 'delete-feed', 'index': dash.ALL}, 'disabled')],
     [Input({'type': 'delete-feed', 'index': dash.ALL}, 'n_clicks')],
@@ -400,10 +458,7 @@ def delete_rss_feed(n_clicks, ids):
     if 0 <= deleted_index < len(feeds):
         researcher.remove_rss_feed(feeds[deleted_index])
     
-    feed_count = len(researcher.get_rss_feeds())
-    feed_count_display = f"({feed_count} feeds)"
-    
-    return [False] * len(ids), feed_count_display
+    return [False] * len(ids)
 
 def create_figure_with_cyberpunk_theme(fig):
     fig.update_layout(

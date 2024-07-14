@@ -60,57 +60,19 @@ class OSINTResearcher:
             
         self.load_rss_feeds()
         self.sentence_model = SentenceTransformer('distilbert-base-nli-mean-tokens')
-        self.email_handler = EmailHandler()
+        self.email_handler = EmailHandler(self.sentence_model)
         
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
         self.logger = logging.getLogger(__name__)
 
-    # def find_folder(self, root_folder, folder_name):
-    #     if root_folder.Name == folder_name:
-    #         return root_folder
-    #     for folder in root_folder.Folders:
-    #         found_folder = self.find_folder(folder, folder_name)
-    #         if found_folder:
-    #             return found_folder
-    #     return None
-
-    # def search_outlook_folder(self, folder, query, use_embeddings=False):
-    #     results = []
-    #     messages = folder.Items
-    #     messages.Sort("[ReceivedTime]", True)
-        
-    #     query_embedding = self.sentence_model.encode([query])[0] if use_embeddings else None
-
-    #     for message in messages:
-    #         try:
-    #             subject = message.Subject
-    #             body = message.Body
-                
-    #             if use_embeddings:
-    #                 text_embedding = self.sentence_model.encode([subject + " " + body])[0]
-    #                 similarity = cosine_similarity([query_embedding], [text_embedding])[0][0]
-    #                 if similarity > 0.5:  # Adjust this threshold as needed
-    #                     results.append({
-    #                         "title": subject,
-    #                         "snippet": body[:200] + "...",
-    #                         "source": "Outlook Email",
-    #                         "published": message.ReceivedTime.strftime("%a, %d %b %Y %H:%M:%S %z"),
-    #                     })
-    #             else:
-    #                 if query.lower() in subject.lower() or query.lower() in body.lower():
-    #                     results.append({
-    #                         "title": subject,
-    #                         "snippet": body[:200] + "...",
-    #                         "source": "Outlook Email",
-    #                         "published": message.ReceivedTime.strftime("%a, %d %b %Y %H:%M:%S %z"),
-    #                     })
-    #         except Exception as e:
-    #             self.logger.error(f"Error processing email: {e}")
-
-    #     return results
-
     def search_outlook(self, query, mailboxes=None, folder_names=None, use_embeddings=False, start_date=None, end_date=None):
         return self.email_handler.search_outlook(query, mailboxes, folder_names, use_embeddings, start_date, end_date)
+
+    def add_mailbox(self, mailbox_name):
+        return self.email_handler.add_mailbox(mailbox_name)
+
+    def remove_mailbox(self, mailbox_name):
+        return self.email_handler.remove_mailbox(mailbox_name)
 
     def get_available_mailboxes(self):
         return self.email_handler.get_available_mailboxes()

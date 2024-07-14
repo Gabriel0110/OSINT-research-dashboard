@@ -4,15 +4,19 @@ email_handler.py
 
 import importlib
 import logging
+import json
 from datetime import datetime
 from sklearn.metrics.pairwise import cosine_similarity
 
 logger = logging.getLogger(__name__)
 
 class EmailHandler:
-    def __init__(self):
+    def __init__(self, sentence_model=None):
         self.email_client = None
+        self.mailboxes = []
+        self.sentence_model = sentence_model
         self.initialize_email_client()
+        self.load_mailboxes()
 
     def initialize_email_client(self):
         try:
@@ -27,16 +31,40 @@ class EmailHandler:
     def is_available(self):
         return self.email_client is not None
 
-    def get_available_mailboxes(self):
-        if not self.is_available():
-            return []
+    def load_mailboxes(self):
         try:
-            mailboxes = [folder.Name for folder in self.email_client.Folders]
-            logger.info(f"Available mailboxes: {mailboxes}")
-            return mailboxes
-        except Exception as e:
-            logger.error(f"Error getting available mailboxes: {e}")
-            return []
+            with open('mailboxes.json', 'r') as f:
+                self.mailboxes = json.load(f)
+        except FileNotFoundError:
+            self.mailboxes = []
+
+    def save_mailboxes(self):
+        with open('mailboxes.json', 'w') as f:
+            json.dump(self.mailboxes, f)
+
+    def add_mailbox(self, mailbox_name):
+        if mailbox_name not in self.mailboxes:
+            try:
+                # Verify if the mailbox exists
+                self.email_client.Folders[mailbox_name]
+                self.mailboxes.append(mailbox_name)
+                self.save_mailboxes()
+                return True, f"Mailbox '{mailbox_name}' added successfully."
+            except Exception as e:
+                return False, f"Failed to add mailbox '{mailbox_name}': {str(e)}"
+        else:
+            return False, f"Mailbox '{mailbox_name}' already exists."
+
+    def remove_mailbox(self, mailbox_name):
+        if mailbox_name in self.mailboxes:
+            self.mailboxes.remove(mailbox_name)
+            self.save_mailboxes()
+            return True, f"Mailbox '{mailbox_name}' removed successfully."
+        else:
+            return False, f"Mailbox '{mailbox_name}' not found."
+
+    def get_available_mailboxes(self):
+        return self.mailboxes
 
     def find_folder(self, root_folder, folder_name):
         if not self.is_available():
@@ -70,17 +98,18 @@ class EmailHandler:
                 folders = [mailbox.GetDefaultFolder(6)]  # 6 is the Inbox folder
 
             for folder in folders:
-                results.extend(self.search_outlook_folder(folder, query, use_embeddings, start_date, end_date))
+                results.extend(self.search_outlook_folder(folder, query, use_embeddings, start_date, end_date, self.sentence_model))
 
         return results
 
-    def search_outlook_folder(self, folder, query, use_embeddings=False, start_date=None, end_date=None):
+    def search_outlook_folder(self, folder, query, use_embeddings=False, start_date=None, end_date=None, sentence_model=None):
         results = []
         messages = folder.Items
         messages.Sort("[ReceivedTime]", True)
 
-        query_embedding = self.sentence_model.encode([query])[0] if use_embeddings else None
-        
+        if use_embeddings and sentence_model:
+            query_embedding = sentence_model.encode([query])[0]
+
         # Convert start_date and end_date to Outlook's date format
         outlook_start_date = start_date.strftime("%m/%d/%Y") if start_date else None
         outlook_end_date = end_date.strftime("%m/%d/%Y") if end_date else None
