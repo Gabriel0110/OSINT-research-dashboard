@@ -83,12 +83,20 @@ class EmailHandler:
     def find_folder(self, root_folder, folder_name):
         if not self.is_available():
             return None
+        
+        logger.info(f"Searching for folder '{folder_name}' in '{root_folder.Name}'.")
+
         if root_folder.Name == folder_name:
+            logger.info(f"Found folder '{folder_name}'.")
             return root_folder
         for folder in root_folder.Folders:
+            logger.info(f"Checking subfolder '{folder.Name}'.")
             found_folder = self.find_folder(folder, folder_name)
             if found_folder:
+                logger.info(f"Found folder '{folder_name}'.")
                 return found_folder
+            
+        logger.info(f"Folder '{folder_name}' not found.")
         return None
 
     def search_outlook(self, query, mailboxes=None, folder_names=None, use_embeddings=False, start_date=None, end_date=None):
@@ -111,8 +119,12 @@ class EmailHandler:
             else:
                 folders = [mailbox.GetDefaultFolder(6)]  # 6 is the Inbox folder
 
+            logger.info(f"Searching {len(folders)} folders in mailbox '{mailbox.Name}'.")
+
             for folder in folders:
                 results.extend(self.search_outlook_folder(folder, query, use_embeddings, start_date, end_date, self.sentence_model))
+
+        logger.info(f"Email search completed. Found {len(results)} results.")
 
         return results
 
