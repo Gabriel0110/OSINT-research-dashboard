@@ -68,11 +68,11 @@ class OSINTResearcher:
     def search_outlook(self, query, mailboxes=None, folder_names=None, use_embeddings=False, start_date=None, end_date=None):
         return self.email_handler.search_outlook(query, mailboxes, folder_names, use_embeddings, start_date, end_date)
 
-    def add_mailbox(self, mailbox_name):
-        return self.email_handler.add_mailbox(mailbox_name)
+    # def add_mailbox(self, mailbox_name):
+    #     return self.email_handler.add_mailbox(mailbox_name)
 
-    def remove_mailbox(self, mailbox_name):
-        return self.email_handler.remove_mailbox(mailbox_name)
+    # def remove_mailbox(self, mailbox_name):
+    #     return self.email_handler.remove_mailbox(mailbox_name)
 
     def get_available_mailboxes(self):
         return self.email_handler.get_available_mailboxes()
