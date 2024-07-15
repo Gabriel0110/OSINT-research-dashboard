@@ -309,6 +309,9 @@ class OSINTResearcher:
         dates = []
         all_text = ""
 
+        if all_text == "":
+            return None, None, None, None, None, None, None, None, None, None
+
         for result in all_results:
             clean_title = self.clean_html_and_limit_text(result['title'])
             clean_snippet = self.clean_html_and_limit_text(result['snippet'])
@@ -327,8 +330,7 @@ class OSINTResearcher:
         source_dist = pd.Series(sources).value_counts()
 
         entities = self.extract_entities(all_text)
-        wordcloud_img = self.generate_wordcloud(all_text)
-
+        wordcloud_img = self.generate_wordcloud(all_text) if all_text.strip() else None
         sentiment = self.analyze_sentiment(all_text)
         
         texts = [result['title'] + ' ' + result['snippet'] for result in all_results]

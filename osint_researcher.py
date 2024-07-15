@@ -234,7 +234,7 @@ def toggle_email_inputs(search_emails_checked):
 
     if is_disabled == False:
         get_mailbox_options()
-        
+
     return is_disabled, is_disabled, is_disabled, is_disabled
 
 # @app.callback(
@@ -294,6 +294,9 @@ def update_results(n_clicks, search_term, search_emails, use_embeddings, mailbox
         all_results = web_results + rss_results + email_results
         
         keyword_freq, source_dist, entities, sentiment, lda_model, corpus, dictionary, entity_network, wordcloud_img, sentiment_by_source = researcher.analyze_results(all_results)
+
+        if not all_results:
+            return (html.P("No search results found."), None, None, None, None, None, "No search results found", {'display': 'block'}, {'display': 'none'}, "")
 
     except Exception as e:
         logger.error(f"Error in search and analysis: {e}")
@@ -383,7 +386,7 @@ def update_results(n_clicks, search_term, search_emails, use_embeddings, mailbox
         "",  # Empty string for analysis placeholder
         {'display': 'none'},  # Hide the placeholder when results are shown
         {'display': 'block'},  # Show the analysis content when results are available
-        f"data:image/png;base64,{wordcloud_img}"
+        f"data:image/png;base64,{wordcloud_img}" if wordcloud_img else ""
     )
 
 @app.callback(
