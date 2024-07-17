@@ -16,7 +16,6 @@ class EmailHandler:
         self.mailboxes = []
         self.sentence_model = sentence_model
         self.initialize_email_client()
-        self.load_mailboxes()
 
     def is_available(self):
         return self.email_client is not None
@@ -26,6 +25,8 @@ class EmailHandler:
             win32com = importlib.import_module('win32com.client')
             self.email_client = win32com.Dispatch("Outlook.Application").GetNamespace("MAPI")
             logger.info("Outlook client initialized successfully.")
+
+            self.load_mailboxes()
         except ImportError:
             logger.warning("pywin32 is not installed. Outlook functionality will not be available.")
         except Exception as e:
@@ -39,6 +40,8 @@ class EmailHandler:
         # except FileNotFoundError:
         #     logger.info("No saved mailboxes file found. Starting with empty list.")
         #     self.mailboxes = []
+
+        logger.info("Loading mailboxes from Outlook...")
 
         try:
             self.mailboxes = [folder.Name for folder in self.email_client.Folders]
@@ -105,24 +108,40 @@ class EmailHandler:
             return []
 
         results = []
+
+        logger.info(f"Searching Outlook for '{query}'.")
+        logger.info(f"Mailboxes: {mailboxes}")
+        logger.info(f"Folder names: {folder_names}")
         
-        if mailboxes is None:
-            logger.info("No mailboxes specified. Searching default mailbox.")
-            mailboxes = [self.email_client.GetDefaultFolder(6).Parent]  # Default mailbox
-        else:
-            mailboxes = [self.email_client.Folders[mailbox] for mailbox in mailboxes if mailbox in self.email_client.Folders]
+        try:
+            # if mailboxes is None:
+            #     logger.info("No mailboxes specified. Searching default mailbox.")
+            #     mailboxes = [self.email_client.GetDefaultFolder(6).Parent]  # Default mailbox
+            # else:
+            #     mailboxes = [self.email_client.Folders[mailbox] for mailbox in mailboxes if mailbox in self.email_client.Folders]
 
-        for mailbox in mailboxes:
-            if folder_names:
-                folders = [self.find_folder(mailbox, name) for name in folder_names]
-                folders = [folder for folder in folders if folder is not None]
-            else:
-                folders = [mailbox.GetDefaultFolder(6)]  # 6 is the Inbox folder
+            for mailbox in mailboxes:
+                mailbox = self.email_client.Folders(mailbox)
+                logger.info(f"Searching mailbox '{mailbox.Name}'...")
 
-            logger.info(f"Searching {len(folders)} folders in mailbox '{mailbox.Name}'.")
+                if folder_names:
+                    logger.info(f"Folder names found: {folder_names}")
 
-            for folder in folders:
-                results.extend(self.search_outlook_folder(folder, query, use_embeddings, start_date, end_date, self.sentence_model))
+                    folders = [self.find_folder(mailbox, name) for name in folder_names]
+                    logger.info(f"Folders after search: {folders}")
+
+                    folders = [folder for folder in folders if folder is not None]
+                    logger.info(f"Folders after filtering: {folders}")
+                else:
+                    folders = [mailbox.GetDefaultFolder(6)]  # 6 is the Inbox folder
+                    logger.info(f"No folder names specified. Searching default folder '{folders[0].Name}'.")
+
+                logger.info(f"Searching {len(folders)} folders in mailbox '{mailbox.Name}'.")
+
+                for folder in folders:
+                    results.extend(self.search_outlook_folder(folder, query, use_embeddings, start_date, end_date, self.sentence_model))
+        except Exception as e:
+            logger.error(f"Error searching Outlook: {e}")
 
         logger.info(f"Email search completed. Found {len(results)} results.")
 

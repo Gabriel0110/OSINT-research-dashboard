@@ -293,39 +293,81 @@ def update_results(n_clicks, search_term, search_emails, use_embeddings, mailbox
 
         all_results = web_results + rss_results + email_results
         
+        if not all_results:
+            return create_no_results_output()
+
         keyword_freq, source_dist, entities, sentiment, lda_model, corpus, dictionary, entity_network, wordcloud_img, sentiment_by_source = researcher.analyze_results(all_results)
 
-        if not all_results:
-            return (html.P("No search results found."), None, None, None, None, None, "No search results found", {'display': 'block'}, {'display': 'none'}, "")
+        if keyword_freq is None:
+            return create_no_results_output()
+
+        search_results_html = [html.Div([
+            html.H4(html.A(result['title'], href=result.get('link', '#'), target="_blank")),
+            html.P(result['snippet']),
+            html.Small(f"Source: {result['source']} | Published: {result.get('published', 'N/A')}"),
+        ], style={'margin-bottom': '20px', 'word-wrap': 'break-word'}) for result in all_results]
+
+        keyword_freq_fig = create_figure_with_cyberpunk_theme(px.bar(keyword_freq, x=keyword_freq.index, y=keyword_freq.values,
+                                labels={'x': 'Keyword', 'y': 'Frequency'}))
+
+        source_dist_fig = create_figure_with_cyberpunk_theme(px.pie(names=source_dist.index, values=source_dist.values))
+
+        # Entity Network Graph
+        entity_network_fig = create_entity_network_figure(entity_network)
+
+        # Sentiment Gauge
+        sentiment_fig = create_sentiment_gauge_figure(sentiment)
+
+        # Topic Modeling
+        topic_model_html = create_topic_model_html(lda_model, corpus, dictionary)
+
+        return (
+            search_results_html,
+            keyword_freq_fig,
+            source_dist_fig,
+            entity_network_fig,
+            sentiment_fig,
+            html.Iframe(srcDoc=topic_model_html, style={"height": "800px", "width": "100%"}),
+            "",  # Empty string for analysis placeholder
+            {'display': 'none'},  # Hide the placeholder when results are shown
+            {'display': 'block'},  # Show the analysis content when results are available
+            f"data:image/png;base64,{wordcloud_img}" if wordcloud_img else ""
+        )
 
     except Exception as e:
         logger.error(f"Error in search and analysis: {e}")
         logger.exception("Exception details:")
-        error_message = html.Div([
-            html.H4("Error in analysis", className="text-danger"),
-            html.P("An error occurred while analyzing the search results. Please try again later.")
-        ])
-        empty_figure = px.scatter(x=[0], y=[0]).update_layout(
-            title="Analysis error",
-            xaxis_title="",
-            yaxis_title=""
-        )
-        return (error_message, empty_figure, empty_figure, empty_figure, 
-                empty_figure, "Analysis error", "An error occurred during analysis", 
-                {'display': 'block'}, {'display': 'none'}, "")
+        return create_error_output(str(e))
+    
+def create_no_results_output():
+    error_message = html.Div([
+        html.H4("No results found", className="text-danger"),
+        html.P("No data was found for that search query. Please try a different search term.")
+    ])
+    empty_figure = px.scatter(x=[0], y=[0]).update_layout(
+        title="No data available",
+        xaxis_title="",
+        yaxis_title=""
+    )
+    return (error_message, empty_figure, empty_figure, empty_figure, 
+            empty_figure, "No data available", "No data was found for that search query", 
+            {'display': 'block'}, {'display': 'none'}, "")
 
-    search_results_html = [html.Div([
-        html.H4(html.A(result['title'], href=result.get('link', '#'), target="_blank")),
-        html.P(result['snippet']),
-        html.Small(f"Source: {result['source']} | Published: {result.get('published', 'N/A')}"),
-    ], style={'margin-bottom': '20px', 'word-wrap': 'break-word'}) for result in all_results]
+def create_error_output(error_message):
+    error_div = html.Div([
+        html.H4("An error occurred", className="text-danger"),
+        html.P(f"Error details: {error_message}")
+    ])
+    empty_figure = px.scatter(x=[0], y=[0]).update_layout(
+        title="Error occurred",
+        xaxis_title="",
+        yaxis_title=""
+    )
+    return (error_div, empty_figure, empty_figure, empty_figure, 
+            empty_figure, "An error occurred", "An error occurred during the search and analysis", 
+            {'display': 'block'}, {'display': 'none'}, "")
 
-    keyword_freq_fig = create_figure_with_cyberpunk_theme(px.bar(keyword_freq, x=keyword_freq.index, y=keyword_freq.values,
-                            labels={'x': 'Keyword', 'y': 'Frequency'}))
-
-    source_dist_fig = create_figure_with_cyberpunk_theme(px.pie(names=source_dist.index, values=source_dist.values))
-
-    # Entity Network Graph
+def create_entity_network_figure(entity_network):
     pos = nx.spring_layout(entity_network)
     edge_trace = go.Scatter(
         x=[], y=[], line=dict(width=0.5, color='#888'), hoverinfo='none', mode='lines')
@@ -347,7 +389,7 @@ def update_results(n_clicks, search_term, search_emails, use_embeddings, mailbox
 
     node_trace.marker.color = [entity_network.nodes[node]['degree_centrality'] for node in entity_network.nodes()]
 
-    entity_network_fig = create_figure_with_cyberpunk_theme(go.Figure(data=[edge_trace, node_trace],
+    return create_figure_with_cyberpunk_theme(go.Figure(data=[edge_trace, node_trace],
                                 layout=go.Layout(
                                     title='Entity Network',
                                     showlegend=False,
@@ -356,8 +398,8 @@ def update_results(n_clicks, search_term, search_emails, use_embeddings, mailbox
                                     xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
                                     yaxis=dict(showgrid=False, zeroline=False, showticklabels=False))))
 
-    # Sentiment Gauge
-    sentiment_fig = create_figure_with_cyberpunk_theme(go.Figure(go.Indicator(
+def create_sentiment_gauge_figure(sentiment):
+    return create_figure_with_cyberpunk_theme(go.Figure(go.Indicator(
         mode = "gauge+number",
         value = sentiment,
         title = {'text': "Sentiment"},
@@ -372,22 +414,9 @@ def update_results(n_clicks, search_term, search_emails, use_embeddings, mailbox
                     'thickness': 0.75,
                     'value': sentiment}})))
 
-    # Topic Modeling
+def create_topic_model_html(lda_model, corpus, dictionary):
     topic_model_html = pyLDAvis.gensim_models.prepare(lda_model, corpus, dictionary)
-    topic_model_html = pyLDAvis.prepared_data_to_html(topic_model_html)
-
-    return (
-        search_results_html,
-        keyword_freq_fig,
-        source_dist_fig,
-        entity_network_fig,
-        sentiment_fig,
-        html.Iframe(srcDoc=topic_model_html, style={"height": "800px", "width": "100%"}),
-        "",  # Empty string for analysis placeholder
-        {'display': 'none'},  # Hide the placeholder when results are shown
-        {'display': 'block'},  # Show the analysis content when results are available
-        f"data:image/png;base64,{wordcloud_img}" if wordcloud_img else ""
-    )
+    return pyLDAvis.prepared_data_to_html(topic_model_html)
 
 @app.callback(
     [Output("rss-input", "value"),

@@ -59,7 +59,7 @@ class OSINTResearcher:
             exit(1)
             
         self.load_rss_feeds()
-        self.sentence_model = SentenceTransformer('distilbert-base-nli-mean-tokens')
+        self.sentence_model = None#SentenceTransformer('distilbert-base-nli-mean-tokens')
         self.email_handler = EmailHandler(self.sentence_model)
         
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -304,13 +304,13 @@ class OSINTResearcher:
         return G
 
     def analyze_results(self, all_results):
+        if not all_results:
+            return None, None, None, None, None, None, None, None, None, None
+
         keywords = []
         sources = []
         dates = []
         all_text = ""
-
-        if all_text == "":
-            return None, None, None, None, None, None, None, None, None, None
 
         for result in all_results:
             clean_title = self.clean_html_and_limit_text(result['title'])
