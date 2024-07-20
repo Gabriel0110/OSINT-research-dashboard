@@ -15,6 +15,7 @@ class EmailHandler:
         self.email_client = None
         self.mailboxes = []
         self.sentence_model = sentence_model
+        self.folder_presets = self.load_folder_presets()
         self.initialize_email_client()
 
     def is_available(self):
@@ -31,6 +32,41 @@ class EmailHandler:
             logger.warning("pywin32 is not installed. Outlook functionality will not be available.")
         except Exception as e:
             logger.error(f"Failed to initialize Outlook client: {e}")
+
+    def load_folder_presets(self):
+        try:
+            with open('folder_presets.json', 'r') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            logger.info("No saved folder presets file found. Starting with empty dict.")
+            return {}
+
+    def save_folder_presets(self):
+        with open('folder_presets.json', 'w') as f:
+            json.dump(self.folder_presets, f)
+        logger.info(f"Saved {len(self.folder_presets)} folder presets to file.")
+
+    def add_folder_preset(self, preset_name, folders):
+        if not folders:
+            return False, "No folders specified for preset."
+
+        if not preset_name:
+            return False, "Preset name cannot be empty."
+
+        if preset_name in self.folder_presets:
+            return False, f"Preset '{preset_name}' already exists."
+        
+        self.folder_presets[preset_name] = folders
+        self.save_folder_presets()
+
+    def remove_folder_preset(self, preset_name):
+        if preset_name in self.folder_presets:
+            del self.folder_presets[preset_name]
+            self.save_folder_presets()
+
+    def get_folder_presets(self):
+        logger.info(f"Returning {len(self.folder_presets)} folder presets.")
+        return self.folder_presets
 
     def load_mailboxes(self):
         # try:

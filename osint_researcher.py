@@ -69,17 +69,17 @@ app.layout = dbc.Container([
             dbc.Checkbox(id="use-embeddings", label="Use Embeddings for Email Search", disabled=True),
             dbc.Button("Check & Load Mailboxes", id="check-mailboxes-button", color="info", className="mt-2 ml-2", disabled=True),
         ], width=6),
-        # dbc.Col([
-            # dbc.Input(id="mailbox-input", placeholder="Enter mailbox name", type="text", disabled=True),
-            # dbc.Button("Add Mailbox", id="add-mailbox-button", color="primary", className="mt-2", disabled=True),
-            # dbc.Button("Check & Load Mailboxes", id="check-mailboxes-button", color="info", className="mt-2 ml-2", disabled=True),
-        # ], width=6),
     ], className="mb-4"),
     dbc.Row([
         dbc.Col([
             dcc.Dropdown(id="mailbox-select", multi=True, placeholder="Select mailboxes to search", disabled=True, style={'color': 'black'}),
             dbc.Input(id="email-folders", placeholder="Enter folder names (comma-separated)", type="text", disabled=True),
-        ], width=12),
+        ], width=6),
+        dbc.Col([
+            dcc.Dropdown(id="folder-preset-select", placeholder="Select folder preset", style={'color': 'black'}, disabled=True),
+            dbc.Input(id="new-preset-name", placeholder="New preset name", type="text", disabled=True),
+            dbc.Button("Save Preset", id="save-preset-button", color="success", className="mt-2", disabled=True),
+        ], width=6),
     ], className="mb-4"),
     dbc.Row([
         dbc.Col([
@@ -164,18 +164,11 @@ researcher = OSINTResearcher()
 
 @app.callback(
     [Output("mailbox-select", "options"),
-    #  Output("mailbox-input", "value"),
      Output("mailbox-select", "value"),
      Output("rss-feedback", "style", allow_duplicate=True),
      Output("rss-feedback", "children", allow_duplicate=True)],
-    [
-        # Input("add-mailbox-button", "n_clicks"),
-        Input("check-mailboxes-button", "n_clicks")
-    ],
-    [
-        # State("mailbox-input", "value"),
-        State("mailbox-select", "value")
-    ],
+    [Input("check-mailboxes-button", "n_clicks")],
+    [State("mailbox-select", "value")],
     prevent_initial_call=True
 )
 def manage_mailboxes(add_clicks, check_clicks):
@@ -194,22 +187,6 @@ def manage_mailboxes(add_clicks, check_clicks):
         logger.info(f"Available mailboxes: {options}")
         return options, dash.no_update, {"color": "green"}, "Mailboxes updated"
 
-    # if button_id == "add-mailbox-button" and mailbox_name:
-    #     logger.info(f"Attempting to add mailbox: {mailbox_name}")
-    #     success, message = researcher.add_mailbox(mailbox_name)
-    #     color = "green" if success else "red"
-    #     logger.info(f"Add mailbox result: success={success}, message={message}")
-    #     options = get_mailbox_options()
-    #     new_selection = current_selection or []
-    #     if success:
-    #         new_selection.append(mailbox_name)
-    #     return options, "", message, {"color": color}, new_selection
-    # elif button_id == "check-mailboxes-button":
-    #     logger.info("Checking mailboxes")
-    #     options = get_mailbox_options()
-    #     logger.info(f"Available mailboxes: {options}")
-    #     return options, dash.no_update, "Mailboxes updated", {"color": "green"}, current_selection
-
     logger.info("No action taken in manage_mailboxes callback")
     return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
@@ -220,32 +197,69 @@ def get_mailbox_options():
     return [{"label": mailbox, "value": mailbox} for mailbox in mailboxes]
 
 @app.callback(
+    [Output("folder-preset-select", "options", allow_duplicate=True),
+     Output("folder-preset-select", "value"),
+     Output("new-preset-name", "value")],  # Clear the new preset name input field
+    [Input("save-preset-button", "n_clicks"),
+     Input("folder-preset-select", "id")],  # Trigger on component load
+    [State("new-preset-name", "value"),
+     State("email-folders", "value")],
+    prevent_initial_call=True
+)
+def manage_folder_presets(n_clicks, _, preset_name, folders):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+    if button_id == "save-preset-button":
+        if not preset_name or not folders:
+            raise PreventUpdate
+        researcher.add_folder_preset(preset_name, folders)
+
+    presets = researcher.get_folder_presets()
+    options = [{"label": name, "value": name} for name in presets.keys()]
+
+    if button_id == "save-preset-button":
+        return options, preset_name, ""  # Clear the new preset name input field
+    else:
+        return options, dash.no_update, dash.no_update
+
+@app.callback(
+    Output("email-folders", "value"),
+    [Input("folder-preset-select", "value")]
+)
+def load_folder_preset(preset_name):
+    if not preset_name:
+        raise PreventUpdate
+
+    presets = researcher.get_folder_presets()
+    return presets.get(preset_name, "")
+
+@app.callback(
     [Output("use-embeddings", "disabled"),
-    #  Output("mailbox-input", "disabled"),
-    #  Output("add-mailbox-button", "disabled"),
      Output("check-mailboxes-button", "disabled"),
      Output("mailbox-select", "disabled"),
-     Output("email-folders", "disabled")],
-    [Input("search-emails", "value")]
+     Output("email-folders", "disabled"),
+     Output("folder-preset-select", "disabled"),
+     Output("new-preset-name", "disabled"),
+     Output("save-preset-button", "disabled"),
+     Output("folder-preset-select", "options", allow_duplicate=True)],
+    [Input("search-emails", "value")],
+    prevent_initial_call=True
 )
 def toggle_email_inputs(search_emails_checked):
     logger.info(f"Email search checkbox state changed: {search_emails_checked}")
     is_disabled = not search_emails_checked
+    preset_options = []
 
-    if is_disabled == False:
-        get_mailbox_options()
+    if not is_disabled:
+        researcher.get_available_mailboxes()
+        presets = researcher.get_folder_presets()
+        preset_options = [{"label": name, "value": name} for name in presets.keys()]
 
-    return is_disabled, is_disabled, is_disabled, is_disabled
-
-# @app.callback(
-#     [Output("search-emails", "disabled"),
-#      Output("search-emails", "checked")],
-#     [Input("search-emails", "id")]
-# )
-# def update_email_search_availability(_):
-#     is_available = researcher.is_email_search_available()
-#     logger.info(f"Email search availability: {is_available}")
-#     return not is_available, False
+    return is_disabled, is_disabled, is_disabled, is_disabled, is_disabled, is_disabled, is_disabled, preset_options
 
 @app.callback(
     output=[Output("search-results", "children"),
@@ -480,28 +494,6 @@ def create_rss_feed_list():
             html.Button("Delete", id={'type': 'delete-feed', 'index': i}, className="ml-2 btn btn-danger btn-sm")
         ]) for i, feed in enumerate(feeds)
     ])
-
-# @app.callback(
-#     [Output({'type': 'delete-feed', 'index': dash.ALL}, 'disabled')],
-#     [Input({'type': 'delete-feed', 'index': dash.ALL}, 'n_clicks')],
-#     [State({'type': 'delete-feed', 'index': dash.ALL}, 'id')]
-# )
-# def delete_rss_feed(n_clicks, ids):
-#     ctx = dash.callback_context
-#     if not ctx.triggered:
-#         raise PreventUpdate
-    
-#     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-#     deleted_index = json.loads(button_id)['index']
-    
-#     feeds = researcher.get_rss_feeds()
-#     if 0 <= deleted_index < len(feeds):
-#         researcher.remove_rss_feed(feeds[deleted_index])
-    
-#     feed_count = len(researcher.get_rss_feeds())
-#     feed_count_display = f"({feed_count} feeds)"
-    
-#     return [False] * len(ids), feed_count_display
 
 @app.callback(
     [Output({'type': 'delete-feed', 'index': dash.ALL}, 'disabled')],

@@ -74,6 +74,15 @@ class OSINTResearcher:
     # def remove_mailbox(self, mailbox_name):
     #     return self.email_handler.remove_mailbox(mailbox_name)
 
+    def add_folder_preset(self, preset_name, folders):
+        return self.email_handler.add_folder_preset(preset_name, folders)
+
+    def remove_folder_preset(self, preset_name):
+        return self.email_handler.remove_folder_preset(preset_name)
+
+    def get_folder_presets(self):
+        return self.email_handler.get_folder_presets()
+
     def get_available_mailboxes(self):
         return self.email_handler.get_available_mailboxes()
 
