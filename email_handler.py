@@ -69,14 +69,6 @@ class EmailHandler:
         return self.folder_presets
 
     def load_mailboxes(self):
-        # try:
-        #     with open('mailboxes.json', 'r') as f:
-        #         self.mailboxes = json.load(f)
-        #     logger.info(f"Loaded {len(self.mailboxes)} mailboxes from file.")
-        # except FileNotFoundError:
-        #     logger.info("No saved mailboxes file found. Starting with empty list.")
-        #     self.mailboxes = []
-
         logger.info("Loading mailboxes from Outlook...")
 
         try:
@@ -85,36 +77,6 @@ class EmailHandler:
         except Exception as e:
             logger.error(f"Failed to load mailboxes from Outlook: {e}")
             self.mailboxes = []
-
-    # def save_mailboxes(self):
-    #     with open('mailboxes.json', 'w') as f:
-    #         json.dump(self.mailboxes, f)
-    #     logger.info(f"Saved {len(self.mailboxes)} mailboxes to file.")
-
-    # def add_mailbox(self, mailbox_name):
-    #     logger.info(f"Attempting to add mailbox: {mailbox_name}")
-    #     if mailbox_name not in self.mailboxes:
-    #         try:
-    #             # Verify if the mailbox exists
-    #             self.email_client.Folders[mailbox_name]
-    #             self.mailboxes.append(mailbox_name)
-    #             self.save_mailboxes()
-    #             logger.info(f"Mailbox '{mailbox_name}' added successfully.")
-    #             return True, f"Mailbox '{mailbox_name}' added successfully."
-    #         except Exception as e:
-    #             logger.error(f"Failed to add mailbox '{mailbox_name}': {str(e)}")
-    #             return False, f"Failed to add mailbox '{mailbox_name}': {str(e)}"
-    #     else:
-    #         logger.warning(f"Mailbox '{mailbox_name}' already exists.")
-    #         return False, f"Mailbox '{mailbox_name}' already exists."
-
-    # def remove_mailbox(self, mailbox_name):
-    #     if mailbox_name in self.mailboxes:
-    #         self.mailboxes.remove(mailbox_name)
-    #         self.save_mailboxes()
-    #         return True, f"Mailbox '{mailbox_name}' removed successfully."
-    #     else:
-    #         return False, f"Mailbox '{mailbox_name}' not found."
 
     def get_available_mailboxes(self):
         return self.mailboxes
@@ -150,12 +112,6 @@ class EmailHandler:
         logger.info(f"Folder names: {folder_names}")
         
         try:
-            # if mailboxes is None:
-            #     logger.info("No mailboxes specified. Searching default mailbox.")
-            #     mailboxes = [self.email_client.GetDefaultFolder(6).Parent]  # Default mailbox
-            # else:
-            #     mailboxes = [self.email_client.Folders[mailbox] for mailbox in mailboxes if mailbox in self.email_client.Folders]
-
             for mailbox in mailboxes:
                 mailbox = self.email_client.Folders(mailbox)
                 logger.info(f"Searching mailbox '{mailbox.Name}'...")

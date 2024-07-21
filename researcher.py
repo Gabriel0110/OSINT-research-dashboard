@@ -1,11 +1,3 @@
-# AIzaSyBtx_z6gCp48K_X5knwi-Umm2QOKc7H4es
-
-"""
-<script async src="https://cse.google.com/cse.js?cx=e74c367178c594c5b">
-</script>
-<div class="gcse-search"></div>
-"""
-
 '''
 researcher.py
 '''
@@ -67,12 +59,6 @@ class OSINTResearcher:
 
     def search_outlook(self, query, mailboxes=None, folder_names=None, use_embeddings=False, start_date=None, end_date=None):
         return self.email_handler.search_outlook(query, mailboxes, folder_names, use_embeddings, start_date, end_date)
-
-    # def add_mailbox(self, mailbox_name):
-    #     return self.email_handler.add_mailbox(mailbox_name)
-
-    # def remove_mailbox(self, mailbox_name):
-    #     return self.email_handler.remove_mailbox(mailbox_name)
 
     def add_folder_preset(self, preset_name, folders):
         return self.email_handler.add_folder_preset(preset_name, folders)
@@ -252,7 +238,7 @@ class OSINTResearcher:
         plt.axis('off')
         plt.tight_layout(pad=0)
         plt.savefig(img, format='png')
-        plt.close()  # Close the figure to free up memory
+        plt.close()
         img.seek(0)
         return base64.b64encode(img.getvalue()).decode()
 
@@ -350,7 +336,7 @@ class OSINTResearcher:
         except Exception as e:
             self.logger.error(f"Error creating entity network: {e}")
             self.logger.exception("Exception details:")
-            entity_network = nx.Graph()  # Return an empty graph in case of error
+            entity_network = nx.Graph()
 
         sentiment_by_source = pd.DataFrame({
             'source': sources,

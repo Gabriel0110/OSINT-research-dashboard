@@ -199,9 +199,9 @@ def get_mailbox_options():
 @app.callback(
     [Output("folder-preset-select", "options", allow_duplicate=True),
      Output("folder-preset-select", "value"),
-     Output("new-preset-name", "value")],  # Clear the new preset name input field
+     Output("new-preset-name", "value")],
     [Input("save-preset-button", "n_clicks"),
-     Input("folder-preset-select", "id")],  # Trigger on component load
+     Input("folder-preset-select", "id")],
     [State("new-preset-name", "value"),
      State("email-folders", "value")],
     prevent_initial_call=True
@@ -222,7 +222,7 @@ def manage_folder_presets(n_clicks, _, preset_name, folders):
     options = [{"label": name, "value": name} for name in presets.keys()]
 
     if button_id == "save-preset-button":
-        return options, preset_name, ""  # Clear the new preset name input field
+        return options, preset_name, ""
     else:
         return options, dash.no_update, dash.no_update
 
@@ -342,9 +342,9 @@ def update_results(n_clicks, search_term, search_emails, use_embeddings, mailbox
             entity_network_fig,
             sentiment_fig,
             html.Iframe(srcDoc=topic_model_html, style={"height": "800px", "width": "100%"}),
-            "",  # Empty string for analysis placeholder
-            {'display': 'none'},  # Hide the placeholder when results are shown
-            {'display': 'block'},  # Show the analysis content when results are available
+            "",
+            {'display': 'none'},
+            {'display': 'block'},
             f"data:image/png;base64,{wordcloud_img}" if wordcloud_img else ""
         )
 
@@ -528,8 +528,8 @@ def create_figure_with_cyberpunk_theme(fig):
     return fig
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
-    #serve(app.server, host='127.0.0.1', port=8050, threads=6)
+    #app.run_server(debug=True)
+    serve(app.server, host='127.0.0.1', port=8050, threads=6)
 
 
 
